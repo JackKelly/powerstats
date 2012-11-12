@@ -7,7 +7,7 @@ class TestChannel(unittest.TestCase):
     def setUp(self):
         self.chan = powerstats.Channel()
         self.chan.data = np.empty(5, 
-                             dtype=[('timecode', np.uint32), ('watts', float)])
+                             dtype=[('timestamp', np.uint32), ('watts', float)])
         self.chan.data[0] = (1, 10)
         self.chan.data[1] = (3, 3)
         self.chan.data[2] = (5, 0.5)
@@ -20,7 +20,7 @@ class TestChannel(unittest.TestCase):
         is_sorted = self.chan._sort()
         
         correct_matrix = np.empty(5, 
-                             dtype=[('timecode', np.uint32), ('watts', float)])
+                             dtype=[('timestamp', np.uint32), ('watts', float)])
         correct_matrix[0] = (1, 10)
         correct_matrix[1] = (2, 200)
         correct_matrix[2] = (3, 3)
