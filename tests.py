@@ -31,8 +31,7 @@ class TestChannel(unittest.TestCase):
         self.assertTrue((correct_matrix == self.chan.data).all())
         
         print(self.chan.data)
-    
-    
-        
+
+
 if __name__ == "__main__":
     unittest.main()

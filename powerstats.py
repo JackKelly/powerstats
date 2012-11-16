@@ -18,32 +18,43 @@ class Channel(object):
         
     def _load(self):
         filename = Channel.args.data_dir + "channel_{:d}.dat".format(self.chan_num) 
-        with open(filename) as data_file:
-            lines = data_file.readlines()
+        try:
+            with open(filename) as data_file:
+                lines = data_file.readlines()
+        except IOError:
+            self.data = None
+            return
         
         self.data = np.zeros(len(lines), 
                              dtype=[('timestamp', np.uint32), ('watts', float)])
         i = 0
         for line in lines:
             line = line.split()
+            timestamp = int(line[0])
             watts = float(line[1])
             if (not self.args.no_high_vals
             or self.label == "mains" 
             or self.label == "aggregate"
             or self.label == "agg" 
             or watts < 4000):    
-                self.data[i] = (int(line[0]), watts) 
+                self.data[i] = (timestamp, watts) 
                 i += 1
                 
         if i != len(lines):
             self.data = np.resize(self.data, i)
         
     def __str__(self):
+        str_format = "{:>2d}  {:<11s}  {:1d}  {:>7d}" + "  {:>7.1f}"*8
+        
+        if self.data is None:
+            return str_format.format(self.chan_num, self.label[:11],
+                                     1,0,0,0,0,0,0,0,0,0)
+        
         is_sorted = self._sort()
         pwr = self.data['watts']
         dt  = self.data['timestamp'][1:-1] - self.data['timestamp'][0:-2]
         
-        return ("{:>2d}  {:<11s}  {:1d}  {:>7d}" + "  {:>7.1f}"*8).format(
+        return str_format.format(
                        self.chan_num, self.label[:11], is_sorted, self.data.size,
                        pwr.min(), pwr.mean(), pwr.max(), pwr.std(),
                         dt.min(),  dt.mean(),  dt.max(),  dt.std())
@@ -56,7 +67,7 @@ class Channel(object):
     def _sort(self):
         """If self.data is sorted by timecode then return true,
         else sort rows in self.data by timecode and return false."""
-        
+       
         sorted_data = self.data.__copy__()
         sorted_data.sort(order='timestamp')
         if (sorted_data == self.data).all():
@@ -66,6 +77,9 @@ class Channel(object):
             return False
         
     def plot(self):
+        if self.data is None:
+            return
+        
         x = np.empty(self.data.size, dtype="object")
         for i in range(self.data.size):
             x[i] = datetime.datetime.fromtimestamp(self.data["timestamp"][i])
