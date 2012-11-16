@@ -9,6 +9,8 @@ import datetime
 class Channel(object):
     labels = {}
     args = None
+    first_timestamp = None
+    last_timestamp = None
     
     def __init__(self, chan_num=None):
         if chan_num:
@@ -42,13 +44,21 @@ class Channel(object):
                 
         if i != len(lines):
             self.data = np.resize(self.data, i)
+            
+        if (not Channel.first_timestamp 
+        or self.data["timestamp"][0] < Channel.first_timestamp):
+            Channel.first_timestamp = self.data["timestamp"][0]
+                
+        if (not Channel.last_timestamp
+        or self.data["timestamp"][-1] > Channel.last_timestamp):
+            Channel.last_timestamp = self.data["timestamp"][-1]
         
     def __str__(self):
-        str_format = "{:>2d}  {:<11s}  {:1d}  {:>7d}" + "  {:>7.1f}"*8
+        str_format = "{:>2d}  {:<11s}  {:1d}  {:>7d}" + "  {:>7.1f}"*9
         
         if self.data is None:
             return str_format.format(self.chan_num, self.label[:11],
-                                     1,0,0,0,0,0,0,0,0,0)
+                                     1,0,0,0,0,0,0,0,0,0,0)
         
         is_sorted = self._sort()
         pwr = self.data['watts']
@@ -57,13 +67,23 @@ class Channel(object):
         return str_format.format(
                        self.chan_num, self.label[:11], is_sorted, self.data.size,
                        pwr.min(), pwr.mean(), pwr.max(), pwr.std(),
-                        dt.min(),  dt.mean(),  dt.max(),  dt.std())
+                        dt.min(),  dt.mean(),  dt.max(),  dt.std(),
+                        self._percent_missed())
+        
+    def _percent_missed(self):
+        total_time = Channel.last_timestamp - Channel.first_timestamp
+        num_expected_samples = total_time / 6
+        return (1 - (self.data.size / num_expected_samples)) * 100
     
     @staticmethod
     def print_header():
-        print("                                 |---------POWER (W)----------|      |-------SAMPLE PERIOD (s)----|")
-        print(" #       NAME    S    COUNT      MIN     MEAN      MAX    STDEV      MIN     MEAN      MAX    STDEV")
+        last = datetime.datetime.fromtimestamp(Channel.last_timestamp)
+        first = datetime.datetime.fromtimestamp(Channel.first_timestamp)
         
+        print("Total time period: {}\n".format(last - first))
+        print("                                 |---------POWER (W)----------|      |-------SAMPLE PERIOD (s)----|")
+        print(" #       NAME    S    COUNT      MIN     MEAN      MAX    STDEV      MIN     MEAN      MAX    STDEV  %missed")    
+    
     def _sort(self):
         """If self.data is sorted by timecode then return true,
         else sort rows in self.data by timecode and return false."""
@@ -131,11 +151,16 @@ def main():
 
     Channel.labels = labels
     Channel.args = args
-    Channel.print_header()
     
     plt.hold(True)
+    
+    channels = {}
+    
     for chan_num in labels.keys():
-        chan = Channel(chan_num)
+        channels[chan_num] = Channel(chan_num)
+        
+    Channel.print_header()
+    for dummy, chan in channels.iteritems():
         print(chan)
         chan.plot()
         
