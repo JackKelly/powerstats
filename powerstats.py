@@ -4,6 +4,7 @@ import numpy as np
 import argparse
 import matplotlib.pyplot as plt
 import datetime
+import sys
 
 
 class Channel(object):
@@ -17,6 +18,8 @@ class Channel(object):
             self.chan_num = chan_num
             self.label = Channel.labels[chan_num] # TODO add error handling if no label
             self._load()
+            self.is_aggregate_chan = True if self.label in ["mains", "aggregate", "agg"] \
+                                          else False
         
     def _load(self):
         filename = Channel.args.data_dir + "channel_{:d}.dat".format(self.chan_num) 
@@ -33,18 +36,25 @@ class Channel(object):
         for line in lines:
             line = line.split()
             timestamp = int(line[0])
+            if Channel.args.start and timestamp < Channel.args.start:
+                continue
+            if Channel.args.end and timestamp > Channel.args.end:
+                break
             watts = float(line[1])
-            if (not self.args.no_high_vals
-            or self.label == "mains" 
-            or self.label == "aggregate"
-            or self.label == "agg" 
+            if (self.args.allow_high_vals
+            or self.is_aggregate_chan
             or watts < 4000):    
                 self.data[i] = (timestamp, watts) 
                 i += 1
                 
-        if i != len(lines):
+        # Resize self.data if we didn't take every line
+        if not i:
+            self.data = None
+            return
+        elif i != len(lines):
             self.data = np.resize(self.data, i)
             
+        # Update Channel.first_timestamp and .last_timestamp
         if (not Channel.first_timestamp 
         or self.data["timestamp"][0] < Channel.first_timestamp):
             Channel.first_timestamp = self.data["timestamp"][0]
@@ -77,10 +87,18 @@ class Channel(object):
     
     @staticmethod
     def print_header():
+        if not Channel.first_timestamp:
+            print("NO DATA! Command line options --start =",
+                   Channel.args.start, "--end =", Channel.args.end)
+            return
+        
         last = datetime.datetime.fromtimestamp(Channel.last_timestamp)
         first = datetime.datetime.fromtimestamp(Channel.first_timestamp)
         
-        print("Total time period: {}\n".format(last - first))
+        print("Start time        =", Channel.first_timestamp, first)
+        print("End time          =", Channel.last_timestamp, last)
+        print("Total time period =", last - first)        
+        print("")
         print("                                 |---------POWER (W)----------|      |-------SAMPLE PERIOD (s)----|")
         print(" #       NAME    S    COUNT      MIN     MEAN      MAX    STDEV      MIN     MEAN      MAX    STDEV  %missed")    
     
@@ -118,6 +136,15 @@ def load_labels(args):
     return labels
 
 
+def convert_to_int(string, name):
+    if string:
+        try:
+            return int(string)
+        except ValueError:
+            print("ERROR:", name, "time must be an integer", file=sys.stderr)
+            sys.exit(2)
+
+
 def setup_argparser():
     # Process command line _args
     parser = argparse.ArgumentParser(description="Generate simple stats for "
@@ -134,12 +161,30 @@ def setup_argparser():
     parser.add_argument('--no-high-values', dest='no_high_vals', action='store_const',
                         const=True, default=False, 
                         help='Remove values >4000W for IAMs (default=False)')
+    
+    parser.add_argument('--start', dest='start', type=str
+                        ,default=""
+                        ,help="Unix timestamp to start time period.")    
+
+    parser.add_argument('--end', dest='end', type=str
+                        ,default=""
+                        ,help="Unix timestamp to end time period.")    
 
     args = parser.parse_args()
+
+    args.allow_high_vals = not args.no_high_vals
 
     # append trailing slash to data_directory if necessary
     if args.data_dir and args.data_dir[-1] != "/":
         args.data_dir += "/"
+    
+    args.start = convert_to_int(args.start, "start")
+    args.end   = convert_to_int(args.end,   "end")
+    
+    if args.start and args.end and args.start > args.end:
+        print("ERROR: start time", args.start, "is after end time", args.end,
+              file=sys.stderr)
+        sys.exit(2)
        
     return args
 
@@ -147,25 +192,27 @@ def setup_argparser():
 def main():
     args = setup_argparser()
     
+    print("data-dir = ", args.data_dir)
+    
     labels = load_labels(args)
 
     Channel.labels = labels
     Channel.args = args
     
-    plt.hold(True)
-    
     channels = {}
     
     for chan_num in labels.keys():
         channels[chan_num] = Channel(chan_num)
-        
+
     Channel.print_header()
+    plt.hold(True)    
     for dummy, chan in channels.iteritems():
         print(chan)
         chan.plot()
         
-    plt.legend()
-    plt.show()
+    if Channel.first_timestamp:
+        plt.legend()
+        plt.show()
 
 
 if __name__ == "__main__":
