@@ -112,7 +112,7 @@ class Channel(object):
         last = datetime.datetime.fromtimestamp(Channel.last_timestamp)
         first = datetime.datetime.fromtimestamp(Channel.first_timestamp)
            
-        htable = Table(col_width=[17,11,20])
+        htable = Table(col_width=[17,20,20])
         
         htable.data_row(["Start time",
                          Channel.first_timestamp.__str__(),
