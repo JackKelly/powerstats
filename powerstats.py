@@ -5,13 +5,28 @@ import argparse
 import matplotlib.pyplot as plt
 import datetime
 import sys
-
+from table import Table
 
 class Channel(object):
     labels = {}
     args = None
     first_timestamp = None
     last_timestamp = None
+    
+    table = Table(col_width=[5,11,6,3] + [6,6,6,6]*2 + [10],
+                  data_format=["{:d}","{:s}","{:d}","{:d}"] + ["{:.1f}"]*9,
+                  col_sep=1)
+    
+    # Create two-row header
+    table.header_row([(4, ""), (4, "POWER (W)", "-"), (4, "SAMPLE PERIOD (s)", "-"), (1, "")])
+    table.header_row(["#", 
+                      "name", 
+                      "count", 
+                      "s", 
+                      "min", "mean", "max", "stdev",
+                      "min", "mean", "max", "stdev",
+                      "% missed"
+                      ])
     
     def __init__(self, chan_num=None):
         if chan_num:
@@ -63,22 +78,21 @@ class Channel(object):
         or self.data["timestamp"][-1] > Channel.last_timestamp):
             Channel.last_timestamp = self.data["timestamp"][-1]
         
-    def __str__(self):
-        str_format = "{:>2d}  {:<11s}  {:1d}  {:>7d}" + "  {:>7.1f}"*9
-        
+    def add_to_table(self):        
         if self.data is None:
-            return str_format.format(self.chan_num, self.label[:11],
+            Channel.table.data_row(self.chan_num, self.label,
                                      1,0,0,0,0,0,0,0,0,0,0)
+            return
         
         is_sorted = self._sort()
         pwr = self.data['watts']
         dt  = self.data['timestamp'][1:-1] - self.data['timestamp'][0:-2]
         
-        return str_format.format(
-                       self.chan_num, self.label[:11], is_sorted, self.data.size,
+        Channel.table.data_row([
+                       self.chan_num, self.label, is_sorted, self.data.size,
                        pwr.min(), pwr.mean(), pwr.max(), pwr.std(),
                         dt.min(),  dt.mean(),  dt.max(),  dt.std(),
-                        self._percent_missed())
+                       self._percent_missed()])
         
     def _percent_missed(self):
         total_time = Channel.last_timestamp - Channel.first_timestamp
@@ -86,21 +100,29 @@ class Channel(object):
         return (1 - (self.data.size / num_expected_samples)) * 100
     
     @staticmethod
-    def print_header():
+    def timeperiod_table():
         if not Channel.first_timestamp:
-            print("NO DATA! Command line options --start =",
-                   Channel.args.start, "--end =", Channel.args.end)
+            print("NO DATA! Command line options --start={}, --end={}"
+                           .format(Channel.args.start, Channel.args.end))
             return
         
         last = datetime.datetime.fromtimestamp(Channel.last_timestamp)
         first = datetime.datetime.fromtimestamp(Channel.first_timestamp)
+           
+        htable = Table(col_width=[17,11,20])
         
-        print("Start time        =", Channel.first_timestamp, first)
-        print("End time          =", Channel.last_timestamp, last)
-        print("Total time period =", last - first)        
-        print("")
-        print("                                 |---------POWER (W)----------|      |-------SAMPLE PERIOD (s)----|")
-        print(" #       NAME    S    COUNT      MIN     MEAN      MAX    STDEV      MIN     MEAN      MAX    STDEV  %missed")    
+        htable.data_row(["Start time",
+                         Channel.first_timestamp.__str__(),
+                         first.__str__()])
+        
+        htable.data_row(["End time",
+                         Channel.last_timestamp.__str__(),
+                         last.__str__()])
+        
+        htable.data_row(["Total time period",
+                         (last - first).__str__()])        
+
+        return htable
     
     def _sort(self):
         """If self.data is sorted by timecode then return true,
@@ -204,11 +226,13 @@ def main():
     for chan_num in labels.keys():
         channels[chan_num] = Channel(chan_num)
 
-    Channel.print_header()
     plt.hold(True)    
     for dummy, chan in channels.iteritems():
-        print(chan)
+        chan.add_to_table()
         chan.plot()
+        
+    print(Channel.timeperiod_table())
+    print(Channel.table)
         
     if Channel.first_timestamp:
         plt.legend()
