@@ -92,7 +92,7 @@ class Channel(object):
         dt  = self.data['timestamp'][1:-1] - self.data['timestamp'][0:-2]
         
         Channel.table.data_row([
-                       self.chan_num, self.label, is_sorted, self.data.size,
+                       self.chan_num, self.label, self.data.size, is_sorted,
                        pwr.min(), pwr.mean(), pwr.max(), pwr.std(),
                         dt.min(),  dt.mean(),  dt.max(),  dt.std(),
                        self._percent_missed()])
