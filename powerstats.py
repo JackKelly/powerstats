@@ -16,19 +16,20 @@ class Channel(object):
     first_timestamp = None
     last_timestamp = None
     
-    table = Table(col_width=[5,11,6,3] + [6,6] + [6,6,6,6] + [10],
-                  data_format=["{:d}","{:s}","{:d}","{}"] + ["{:.1f}"]*7,
+    table = Table(col_width=[5,11,6,3] + [6,6] + [6,6,6,6] + [10, 6],
+                  data_format=["{:d}","{:s}","{:d}","{}"] + ["{:.1f}"]*7 + ["{:.1f}"],
                   col_sep=1)
     
     # Create two-row header
-    table.header_row([(4, ""), (2, "POWER (W)", "-"), (4, "SAMPLE PERIOD (s)", "-"), (1, "")])
+    table.header_row([(4, ""), (2, "POWER (W)", "-"), (4, "SAMPLE PERIOD (s)", "-"), (2, "")])
     table.header_row(["#", 
                       "name", 
                       "count", 
                       "s",
                       "min", "max",
                       "min", "mean", "max", "stdev",
-                      "% missed"
+                      "% missed",
+                      "kwh"
                       ])
     
     def __init__(self, chan_num=None):
@@ -80,11 +81,25 @@ class Channel(object):
         if (not Channel.last_timestamp
         or self.data["timestamp"][-1] > Channel.last_timestamp):
             Channel.last_timestamp = self.data["timestamp"][-1]
+            
+    def _kwh(self):
+        if self.data is None:
+            return 0
+        
+        kwh = 0
+        for i in range(0, self.data.size-1):
+            if self.data[i]['watts']:
+                dt = self.data[i+1]['timestamp']-self.data[i]['timestamp']
+                if dt > 300: # assume it's off if we haven't heard from it
+                    dt = 300
+                kwh += (dt / 3600) * (self.data[i]['watts'] / 1000)
+            
+        return kwh
         
     def add_to_table(self):        
         if self.data is None:
             Channel.table.data_row(self.chan_num, self.label,
-                                     1,0,0,0,0,0,0,0,0)
+                                     1,0,0,0,0,0,0,0,0,0)
             return
         
         if Channel.args.sort:
@@ -99,7 +114,8 @@ class Channel(object):
                        self.chan_num, self.label, self.data.size, is_sorted,
                        pwr.min(), pwr.max(),
                         dt.min(),  dt.mean(),  dt.max(),  dt.std(),
-                       self._percent_missed()])
+                       self._percent_missed(),
+                       self._kwh()])
         
     def _percent_missed(self):
         total_time = Channel.last_timestamp - Channel.first_timestamp
