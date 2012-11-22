@@ -92,7 +92,16 @@ class Channel(object):
                 dt = self.data[i+1]['timestamp']-self.data[i]['timestamp']
                 if dt > 300: # assume it's off if we haven't heard from it
                     dt = 300
-                kwh += (dt / 3600) * (self.data[i]['watts'] / 1000)
+                    next_watts = 0
+                else:
+                    next_watts = self.data[i+1]['watts']
+                    
+                dt = dt / 3600 # convert from seconds to hours
+                triangle_vert_side = abs(self.data[i]['watts']-next_watts)
+                triangle_area = (triangle_vert_side * dt) / 2
+                rectangle_area = min( self.data[i]['watts'], next_watts ) * dt
+                
+                kwh += (rectangle_area + triangle_area) / 1000
             
         return kwh
         
