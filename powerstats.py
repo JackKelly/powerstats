@@ -7,6 +7,7 @@ import argparse
 import matplotlib.pyplot as plt
 import datetime
 import sys
+import os
 from table import Table
 
 class Channel(object):
@@ -228,15 +229,18 @@ def main():
     for chan_num in labels.keys():
         channels[chan_num] = Channel(chan_num)
 
-    plt.hold(True)    
+    if os.environ.get('DISPLAY'):
+        plt.hold(True)
+            
     for dummy, chan in channels.iteritems():
         chan.add_to_table()
-        chan.plot()
+        if os.environ.get('DISPLAY'):
+            chan.plot()
         
     print(Channel.timeperiod_table())
     print(Channel.table)
         
-    if Channel.first_timestamp:
+    if os.environ.get('DISPLAY') and Channel.first_timestamp:
         plt.legend()
         plt.show()
 
