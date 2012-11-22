@@ -16,17 +16,17 @@ class Channel(object):
     first_timestamp = None
     last_timestamp = None
     
-    table = Table(col_width=[5,11,6,3] + [6,6,6,6]*2 + [10],
-                  data_format=["{:d}","{:s}","{:d}","{:d}"] + ["{:.1f}"]*9,
+    table = Table(col_width=[5,11,6,3] + [6,6] + [6,6,6,6] + [10],
+                  data_format=["{:d}","{:s}","{:d}","{}"] + ["{:.1f}"]*7,
                   col_sep=1)
     
     # Create two-row header
-    table.header_row([(4, ""), (4, "POWER (W)", "-"), (4, "SAMPLE PERIOD (s)", "-"), (1, "")])
+    table.header_row([(4, ""), (2, "POWER (W)", "-"), (4, "SAMPLE PERIOD (s)", "-"), (1, "")])
     table.header_row(["#", 
                       "name", 
                       "count", 
-                      "s", 
-                      "min", "mean", "max", "stdev",
+                      "s",
+                      "min", "max",
                       "min", "mean", "max", "stdev",
                       "% missed"
                       ])
@@ -84,16 +84,20 @@ class Channel(object):
     def add_to_table(self):        
         if self.data is None:
             Channel.table.data_row(self.chan_num, self.label,
-                                     1,0,0,0,0,0,0,0,0,0,0)
+                                     1,0,0,0,0,0,0,0,0)
             return
         
-        is_sorted = self._sort()
+        if Channel.args.sort:
+            is_sorted = self._sort()
+        else:
+            is_sorted = "-"
+        
         pwr = self.data['watts']
         dt  = self.data['timestamp'][1:-1] - self.data['timestamp'][0:-2]
         
         Channel.table.data_row([
                        self.chan_num, self.label, self.data.size, is_sorted,
-                       pwr.min(), pwr.mean(), pwr.max(), pwr.std(),
+                       pwr.min(), pwr.max(),
                         dt.min(),  dt.mean(),  dt.max(),  dt.std(),
                        self._percent_missed()])
         
@@ -186,6 +190,10 @@ def setup_argparser():
     parser.add_argument('--no-high-values', dest='no_high_vals', action='store_const',
                         const=True, default=False, 
                         help='Remove values >4000W for IAMs (default=False)')
+    
+    parser.add_argument('--sort', dest='sort', action='store_const',
+                        const=True, default=False, 
+                        help='Pre-sort by date. Vital for MIT data (default=False)')
     
     parser.add_argument('--start', dest='start', type=str
                         ,default=""
