@@ -97,7 +97,7 @@ class Table:
         return text
     
     def html(self):
-        s = "<table>\n"
+        s = "<table border=1>\n"
         for row in self.header:
             s += "  <tr>\n"
             s += self._list_to_html_row(row, header=True)

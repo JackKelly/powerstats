@@ -18,6 +18,7 @@ class Channel(object):
     args = None
     first_timestamp = None
     last_timestamp = None
+    axes = None
     
     table = Table(col_width=[5,11,6,3] + [6,6] + [6,6,6,6] + [10, 6],
                   data_format=["{:d}","{:s}","{:d}","{}"] + ["{:.1f}"]*6 + ["{:.1%}", "{:.1f}"],
@@ -45,7 +46,7 @@ class Channel(object):
                                           else False
         
     def _load(self):
-        filename = Channel.args.data_dir + "channel_{:d}.dat".format(self.chan_num) 
+        filename = Channel.args.data_dir + "/channel_{:d}.dat".format(self.chan_num) 
         print("Loading", filename, "...", end="")
         try:
             with open(filename) as data_file:
@@ -101,8 +102,8 @@ class Channel(object):
         
     def add_to_table(self):
         if self.data is None:
-            Channel.table.data_row(self.chan_num, self.label,
-                                     1,0,0,0,0,0,0,0,0,0)
+            Channel.table.data_row([self.chan_num, self.label,
+                                     0,'-',0,0,0,0,0,0,1,0])
             return
         
         if Channel.args.sort:
@@ -114,13 +115,16 @@ class Channel(object):
                        self.chan_num, self.label, self.data.size, is_sorted,
                        self.data['watts'].min(), self.data['watts'].max(),
                        self.dt.min(), self.dt.mean(), self.dt.max(), self.dt.std(),
-                       self._percent_missed(),
+                       self._proportion_missed(),
                        self._kwh()])
         
-    def _percent_missed(self):
+    def _proportion_missed(self):
         total_time = Channel.last_timestamp - Channel.first_timestamp
         num_expected_samples = total_time / SAMPLE_PERIOD
-        return (1 - (self.data.size / num_expected_samples))
+        prop_missed = (1 - ((self.data.size+1) / num_expected_samples))
+        if prop_missed < 0:
+            prop_missed = 0 
+        return prop_missed
     
     @staticmethod
     def timeperiod_table():
@@ -166,11 +170,26 @@ class Channel(object):
         x = np.empty(self.data.size, dtype="object")
         for i in range(self.data.size):
             x[i] = datetime.datetime.fromtimestamp(self.data["timestamp"][i])
-        plt.plot(x, self.data['watts'], label=self.label)
+        Channel.axes.plot(x, self.data['watts'], label=self.label)
+        
+    @staticmethod
+    def output_text_tables():
+        print("Output text tables")
+        print(Channel.timeperiod_table())
+        print(Channel.table)
+
+    @staticmethod
+    def output_html_tables():
+        html = "<p>"
+        html += Channel.timeperiod_table().html()
+        html += "</p><p>"
+        html += Channel.table.html()
+        html += "</p>"
+        return html
 
 
 def load_labels(args):
-    with open(args.data_dir + args.labels_file) as labels_file:
+    with open(args.data_dir + "/" + args.labels_file) as labels_file:
         lines = labels_file.readlines()
     
     labels = {}
@@ -213,7 +232,11 @@ def setup_argparser():
     
     parser.add_argument('--no-plot', dest='plot', action='store_const',
                         const=False, default=True, 
-                        help='Do not plot graph (default=False if X is available)')    
+                        help='Do not plot graph (default=False if X is available)')
+    
+    parser.add_argument('--html-dir', dest='html_dir', type=str,
+                        default="", 
+                        help='Send stats and graphs directory as HTML')    
     
     parser.add_argument('--start', dest='start', type=str
                         ,default=""
@@ -227,18 +250,23 @@ def setup_argparser():
 
     args.allow_high_vals = not args.no_high_vals
 
-    # append trailing slash to data_directory if necessary
-    if args.data_dir and args.data_dir[-1] != "/":
-        args.data_dir += "/"
+    # process paths
+    args.data_dir = os.path.realpath(args.data_dir)
+    if args.html_dir:
+        args.html_dir = os.path.realpath(args.html_dir)
+        # if directory doesn't exist then create it
+        if not os.path.isdir(args.html_dir):
+            os.makedirs(args.html_dir)
     
+    # process start and end times
     args.start = convert_to_int(args.start, "start")
     args.end   = convert_to_int(args.end,   "end")
-    
     if args.start and args.end and args.start > args.end:
         print("ERROR: start time", args.start, "is after end time", args.end,
               file=sys.stderr)
         sys.exit(2)
        
+    # turn off plotting if X is not attached
     if not os.environ.get('DISPLAY'):
         args.plot = False
        
@@ -263,19 +291,37 @@ def main():
     print("")
 
     if args.plot:
-        plt.hold(True)
+        fig = plt.figure(figsize=(14,6))
+        Channel.axes = fig.add_subplot(111) 
+        Channel.axes.set_xlabel("time")
+        Channel.axes.set_ylabel("watts")
             
     for dummy, chan in channels.iteritems():
         chan.add_to_table()
         if args.plot:
             chan.plot()
-        
-    print(Channel.timeperiod_table())
-    print(Channel.table)
+    
+    if args.html_dir:
+        html_file = open(args.html_dir + "/index.html", "w")
+        html_file.write("<!DOCTYPE html>\n<html>\n<body>")
+        html_file.write(Channel.output_html_tables())
+        html_file.write("<img src=\"fig.png\"/>")
+        html_file.write("</body>\n</html>")
+        html_file.close()
+    else:
+        Channel.output_text_tables()
         
     if args.plot and Channel.first_timestamp:
-        plt.legend()
-        plt.show()
+        plt.tight_layout()
+        leg = plt.legend()
+        for t in leg.get_texts():
+            t.set_fontsize('small')
+                
+        if args.html_dir:
+            plt.savefig(args.html_dir + "/fig.png", bbox_inches=0)
+        else:
+            plt.show()
+            
 
 
 if __name__ == "__main__":
