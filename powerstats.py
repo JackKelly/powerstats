@@ -216,6 +216,10 @@ def setup_argparser():
                         const=True, default=False, 
                         help='Pre-sort by date. Vital for MIT data (default=False)')
     
+    parser.add_argument('--no-plot', dest='plot', action='store_const',
+                        const=False, default=True, 
+                        help='Do not plot graph (default=False if X is available)')    
+    
     parser.add_argument('--start', dest='start', type=str
                         ,default=""
                         ,help="Unix timestamp to start time period.")    
@@ -240,6 +244,9 @@ def setup_argparser():
               file=sys.stderr)
         sys.exit(2)
        
+    if not os.environ.get('DISPLAY'):
+        args.plot = False
+       
     return args
 
 
@@ -260,18 +267,18 @@ def main():
         
     print("")
 
-    if os.environ.get('DISPLAY'):
+    if args.plot:
         plt.hold(True)
             
     for dummy, chan in channels.iteritems():
         chan.add_to_table()
-        if os.environ.get('DISPLAY'):
+        if args.plot:
             chan.plot()
         
     print(Channel.timeperiod_table())
     print(Channel.table)
         
-    if os.environ.get('DISPLAY') and Channel.first_timestamp:
+    if args.plot and Channel.first_timestamp:
         plt.legend()
         plt.show()
 
