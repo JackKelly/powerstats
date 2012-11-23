@@ -42,6 +42,7 @@ class Channel(object):
         
     def _load(self):
         filename = Channel.args.data_dir + "channel_{:d}.dat".format(self.chan_num) 
+        print("Loading", filename, "...", end="")
         try:
             with open(filename) as data_file:
                 lines = data_file.readlines()
@@ -81,6 +82,8 @@ class Channel(object):
         if (not Channel.last_timestamp
         or self.data["timestamp"][-1] > Channel.last_timestamp):
             Channel.last_timestamp = self.data["timestamp"][-1]
+            
+        print("done.")
             
     def _kwh(self):
         if self.data is None:
@@ -254,6 +257,8 @@ def main():
     
     for chan_num in labels.keys():
         channels[chan_num] = Channel(chan_num)
+        
+    print("")
 
     if os.environ.get('DISPLAY'):
         plt.hold(True)
