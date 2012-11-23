@@ -10,6 +10,9 @@ import sys
 import os
 from table import Table
 
+MAX_PERIOD = 300 # seconds
+SAMPLE_PERIOD = 6 # seconds        
+
 class Channel(object):
     labels = {}
     args = None
@@ -17,7 +20,7 @@ class Channel(object):
     last_timestamp = None
     
     table = Table(col_width=[5,11,6,3] + [6,6] + [6,6,6,6] + [10, 6],
-                  data_format=["{:d}","{:s}","{:d}","{}"] + ["{:.1f}"]*7 + ["{:.1f}"],
+                  data_format=["{:d}","{:s}","{:d}","{}"] + ["{:.1f}"]*6 + ["{:.1%}", "{:.1f}"],
                   col_sep=1)
     
     # Create two-row header
@@ -33,6 +36,7 @@ class Channel(object):
                       ])
     
     def __init__(self, chan_num=None):
+        self.dt = None
         if chan_num:
             self.chan_num = chan_num
             self.label = Channel.labels[chan_num] # TODO add error handling if no label
@@ -83,25 +87,19 @@ class Channel(object):
         or self.data["timestamp"][-1] > Channel.last_timestamp):
             Channel.last_timestamp = self.data["timestamp"][-1]
             
+        self.dt = self.data['timestamp'][1:-1] - self.data['timestamp'][0:-2]
+            
         print("done.")
             
     def _kwh(self):
         if self.data is None:
             return 0
+
+        dt_limited = np.where(self.dt>MAX_PERIOD, SAMPLE_PERIOD, self.dt)
+        watt_seconds = (dt_limited * self.data['watts'][:-2]).sum()           
+        return watt_seconds / 3600000
         
-        kwh = 0
-        for i in range(0, self.data.size-1):
-            if self.data[i]['watts']:
-                dt = self.data[i+1]['timestamp']-self.data[i]['timestamp']
-                if dt > 300: # assume it's off if we haven't heard from it
-                    dt = 300
-                    
-                dt = dt / 3600 # convert from seconds to hours
-                kwh += (dt * self.data[i]['watts']) / 1000
-            
-        return kwh
-        
-    def add_to_table(self):        
+    def add_to_table(self):
         if self.data is None:
             Channel.table.data_row(self.chan_num, self.label,
                                      1,0,0,0,0,0,0,0,0,0)
@@ -110,22 +108,19 @@ class Channel(object):
         if Channel.args.sort:
             is_sorted = self._sort()
         else:
-            is_sorted = "-"
-        
-        pwr = self.data['watts']
-        dt  = self.data['timestamp'][1:-1] - self.data['timestamp'][0:-2]
-        
+            is_sorted = "-"        
+
         Channel.table.data_row([
                        self.chan_num, self.label, self.data.size, is_sorted,
-                       pwr.min(), pwr.max(),
-                        dt.min(),  dt.mean(),  dt.max(),  dt.std(),
+                       self.data['watts'].min(), self.data['watts'].max(),
+                       self.dt.min(), self.dt.mean(), self.dt.max(), self.dt.std(),
                        self._percent_missed(),
                        self._kwh()])
         
     def _percent_missed(self):
         total_time = Channel.last_timestamp - Channel.first_timestamp
-        num_expected_samples = total_time / 6
-        return (1 - (self.data.size / num_expected_samples)) * 100
+        num_expected_samples = total_time / SAMPLE_PERIOD
+        return (1 - (self.data.size / num_expected_samples))
     
     @staticmethod
     def timeperiod_table():
