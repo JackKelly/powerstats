@@ -173,22 +173,20 @@ class Channel(object):
         for i in range(self.data.size):
             x[i] = datetime.datetime.fromtimestamp(self.data["timestamp"][i])
         pwr_line, = Channel.pwr_axes.plot(x, self.data['watts'], label=self.label)
-        
-        # Channel.hit_axes.plot(x, [-self.chan_num]*self.data.size, '.', label=self.label)
-        
-        #x=self.data['timestamp']
-        #date_range = Channel.last_timestamp - Channel.first_timestamp
-        
+                
         for i in (self.dt > 8).nonzero()[0]:
-            #start = (x[i] - Channel.first_timestamp) / date_range
-            #end = (x[i+1] - Channel.first_timestamp) / date_range
             start = x[i]
             end   = x[i+1]
-            line = matplotlib.lines.Line2D([start, end],
-                                           [-(self.chan_num)]*2,
-                                           linewidth=1,
-                                           c=pwr_line.get_c())
-            Channel.hit_axes.add_line(line)
+#            line = matplotlib.lines.Line2D([start, end],
+#                                           [-(self.chan_num)]*2,
+#                                           linewidth=1,
+#                                           c=pwr_line.get_c())
+#            Channel.hit_axes.add_line(line)
+            rect = plt.Rectangle((start, -self.chan_num),
+                                 (end-start).total_seconds()/86400, 
+                                 1,
+                                 color=pwr_line.get_c())
+            Channel.hit_axes.add_patch(rect)
         
     @staticmethod
     def output_text_tables():
@@ -311,12 +309,13 @@ def main():
     if args.plot:
         fig = plt.figure(figsize=(14,6))
         Channel.pwr_axes = fig.add_subplot(2,1,1)
+        Channel.pwr_axes.set_title("Power consumption")
         Channel.pwr_axes.set_xlabel("time")
         Channel.pwr_axes.set_ylabel("watts")
         
-        Channel.hit_axes = fig.add_subplot(2,1,2) # for plotting missed samples  
+        Channel.hit_axes = fig.add_subplot(2,1,2) # for plotting missed samples
+        Channel.hit_axes.set_title("Drop outs")  
         Channel.hit_axes.xaxis.axis_date()  
-        Channel.hit_axes.set_frame_on(False)
             
     for dummy, chan in channels.iteritems():
         chan.add_to_table()
