@@ -20,6 +20,7 @@ class Channel(object):
     first_timestamp = None
     last_timestamp = None
     axes = None
+    max_chan_num = 0
     
     table = Table(col_width=[5,11,6,3] + [6,6] + [6,6,6,6] + [10, 6],
                   data_format=["{:d}","{:s}","{:d}","{}"] + ["{:.1f}"]*6 + ["{:.1%}", "{:.1f}"],
@@ -41,6 +42,8 @@ class Channel(object):
         self.dt = None
         if chan_num:
             self.chan_num = chan_num
+            if self.chan_num > Channel.max_chan_num:
+                Channel.max_chan_num = self.chan_num
             self.label = Channel.labels[chan_num] # TODO add error handling if no label
             self._load()
             self.is_aggregate_chan = True if self.label in ["mains", "aggregate", "agg"] \
@@ -103,7 +106,7 @@ class Channel(object):
         return watt_seconds / 3600000
         
     def add_to_table(self):
-        if self.data is None:
+        if self.data is None or self.data.size < 2:
             Channel.table.data_row([self.chan_num, self.label,
                                      0,'-',0,0,0,0,0,0,1,0])
             return
@@ -166,22 +169,20 @@ class Channel(object):
             return False
         
     def plot(self):
-        if self.data is None:
+        if self.dt is None:
             return
         
+        # Power consumption
         x = np.empty(self.data.size, dtype="object")
         for i in range(self.data.size):
             x[i] = datetime.datetime.fromtimestamp(self.data["timestamp"][i])
+            
         pwr_line, = Channel.pwr_axes.plot(x, self.data['watts'], label=self.label)
                 
-        for i in (self.dt > 8).nonzero()[0]:
+        # Plot missed samples
+        for i in (self.dt > 11).nonzero()[0]:
             start = x[i]
             end   = x[i+1]
-#            line = matplotlib.lines.Line2D([start, end],
-#                                           [-(self.chan_num)]*2,
-#                                           linewidth=1,
-#                                           c=pwr_line.get_c())
-#            Channel.hit_axes.add_line(line)
             rect = plt.Rectangle((start, -self.chan_num),
                                  (end-start).total_seconds()/86400, 
                                  1,
@@ -190,7 +191,6 @@ class Channel(object):
         
     @staticmethod
     def output_text_tables():
-        print("Output text tables")
         print(Channel.timeperiod_table())
         print(Channel.table)
 
@@ -314,7 +314,7 @@ def main():
         Channel.pwr_axes.set_ylabel("watts")
         
         Channel.hit_axes = fig.add_subplot(2,1,2) # for plotting missed samples
-        Channel.hit_axes.set_title("Drop outs")  
+        Channel.hit_axes.set_title("Drop-outs")  
         Channel.hit_axes.xaxis.axis_date()  
             
     for dummy, chan in channels.iteritems():
@@ -333,7 +333,10 @@ def main():
         Channel.output_text_tables()
         
     if args.plot and Channel.first_timestamp:
-        Channel.hit_axes.autoscale_view()        
+        Channel.hit_axes.autoscale_view()      
+        Channel.hit_axes.set_xlim( Channel.pwr_axes.get_xlim() )
+        Channel.hit_axes.set_ylim([-Channel.max_chan_num, 0])
+          
         plt.tight_layout()
         leg = Channel.pwr_axes.legend()
         for t in leg.get_texts():
