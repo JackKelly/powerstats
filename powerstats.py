@@ -92,8 +92,8 @@ class Channel(object):
         if (not Channel.last_timestamp
         or self.data["timestamp"][-1] > Channel.last_timestamp):
             Channel.last_timestamp = self.data["timestamp"][-1]
-            
-        self.dt = self.data['timestamp'][1:-1] - self.data['timestamp'][0:-2]
+
+        self.dt = self.data['timestamp'][1:] - self.data['timestamp'][:-1]
             
         print("done.")
             
@@ -102,11 +102,11 @@ class Channel(object):
             return 0
 
         dt_limited = np.where(self.dt>MAX_PERIOD, SAMPLE_PERIOD, self.dt)
-        watt_seconds = (dt_limited * self.data['watts'][:-2]).sum()           
+        watt_seconds = (dt_limited * self.data['watts'][:-1]).sum()           
         return watt_seconds / 3600000
         
     def add_to_table(self):
-        if self.data is None or self.data.size < 2:
+        if self.dt is None:
             Channel.table.data_row([self.chan_num, self.label,
                                      0,'-',0,0,0,0,0,0,1,0])
             return
@@ -124,12 +124,10 @@ class Channel(object):
                        self._kwh()])
         
     def _proportion_missed(self):
-        total_time = Channel.last_timestamp - Channel.first_timestamp
-        num_expected_samples = total_time / SAMPLE_PERIOD
-        prop_missed = (1 - ((self.data.size+1) / num_expected_samples))
-        if prop_missed < 0:
-            prop_missed = 0 
-        return prop_missed
+        n_missed = ((self.dt // SAMPLE_PERIOD) * (self.dt > 10)).sum()
+        n_expected = n_missed + (self.dt <= 10).sum()
+        return n_missed / n_expected
+                
     
     @staticmethod
     def timeperiod_table():
@@ -183,9 +181,9 @@ class Channel(object):
         for i in (self.dt > 11).nonzero()[0]:
             start = x[i]
             end   = x[i+1]
-            rect = plt.Rectangle((start, -self.chan_num),
-                                 (end-start).total_seconds()/86400, 
-                                 1,
+            rect = plt.Rectangle((start, -self.chan_num), # bottom left corner
+                                 (end-start).total_seconds()/86400, # length
+                                 1, # width
                                  color=pwr_line.get_c())
             Channel.hit_axes.add_patch(rect)
         
