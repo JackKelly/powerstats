@@ -5,7 +5,6 @@ from __future__ import division
 import numpy as np
 import argparse
 import matplotlib.pyplot as plt
-import matplotlib
 import datetime
 import sys
 import os
@@ -292,7 +291,10 @@ def main():
     
     print("data-dir = ", args.data_dir)
     
-    labels = load_labels(args)
+    try:
+        labels = load_labels(args)
+    except IOError, e:
+        sys.exit(e)
 
     Channel.labels = labels
     Channel.args = args
