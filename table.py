@@ -51,12 +51,15 @@ class Table:
             self.last_timestamp = t
 
     def html(self):
-        # HTML version of time details
-        time_details = self._time_details()
-        time_details = time_details.replace("\n", "</td>\n</tr>\n<tr>\n<td>")        
-        time_details = time_details.replace(": ", "</td>\n<td>")
-        s = "\n<table>\n<tr>\n<td>" + time_details + "</table>\n"
+        if not self.data:
+            return ""
         
+        s = "" 
+        
+        time_details = self._time_details()
+        if time_details:
+            s += time_details.html()  + "\n"
+            
         s += "<table border=\"1\">\n"
         for row in self.header:
             s += "  <tr>\n"
@@ -73,7 +76,14 @@ class Table:
         return s        
         
     def __str__(self):
-        s = self._time_details() + "\n"
+        if not self.data:
+            return ""        
+        
+        s = "" 
+        
+        time_details = self._time_details()
+        if time_details:
+            s += time_details.__str__()  + "\n"
         
         for row in self.header:
             s += self._list_to_plain_text_row(row, header=True).upper()
@@ -86,17 +96,16 @@ class Table:
         return s
 
     def _time_details(self):
-        time_details = Table()
-        
         if not self.first_timestamp:
-            return "NO DATA"
+            return
         
+        time_details = Table(col_width = [9,20])
         start_dt = datetime.datetime.fromtimestamp(self.first_timestamp)
         end_dt   = datetime.datetime.fromtimestamp(self.last_timestamp)
-        s =  "Start   : {}\n".format(start_dt)
-        s += "End     : {}\n".format(end_dt)
-        s += "Duration: {}\n".format(end_dt - start_dt)
-        return s
+        time_details.data_row(["Start", start_dt])
+        time_details.data_row(["End", end_dt])
+        time_details.data_row(["Duration", end_dt - start_dt])
+        return time_details
     
     def _list_to_plain_text_row(self, lst, header=False):
         text = ""

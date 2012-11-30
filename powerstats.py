@@ -8,11 +8,11 @@ import datetime
 import sys
 import os
 import pickle
+import copy
 from table import Table
 
 MAX_PERIOD = 300 # seconds
 SAMPLE_PERIOD = 6 # seconds        
-
 
 class Channel(object):
     labels = {}
@@ -35,6 +35,21 @@ class Channel(object):
                       "% missed",
                       "kwh"
                       ])
+
+    cache_table = Table(col_width=[5,11,6] + [6,6] + [6,6,6] + [10, 6],
+                        data_format=["{:d}","{:s}","{:d}"] + ["{:.1f}"]*5 + ["{:.1%}", "{:.1f}"])
+    cache_table.header_row([(3, ""), (2, "POWER (W)", "-"), (3, "SAMPLE PERIOD (s)", "-"), (2, "")])
+    cache_table.header_row(["#", 
+                      "name", 
+                      "count", 
+                      "min", "max",
+                      "min", "mean", "max",
+                      "% missed",
+                      "kwh"
+                      ])
+    
+    totals_table = copy.deepcopy(cache_table)
+
     
     def __init__(self, chan_num=None):
         self._dt = None # delta time.
@@ -52,16 +67,24 @@ class Channel(object):
                                           else False
         
     def _load(self):
-        filename = Channel.args.data_dir + "/channel_{:d}.dat".format(self.chan_num) 
-        print("Loading", filename, "...", end="")
+        self.data_filename = Channel.args.data_dir + "/channel_{:d}.dat".format(self.chan_num) 
+        print("Loading", self.data_filename, "...", end="")
+
+        # Load cache if necessary
+        if Channel.args.cache:
+            self._load_cache()        
+        
+        # Load data file
         try:
-            with open(filename) as data_file:
+            with open(self.data_filename) as data_file:
+                if self._cache:
+                    data_file.seek(self._cache['filesize'])
                 lines = data_file.readlines()
         except IOError:
             self.data = None
             print("doesn't exist. Skipping.")
             return
-        
+                
         self.data = np.zeros(len(lines), 
                              dtype=[('timestamp', np.uint32), ('watts', float)])
         i = 0
@@ -88,52 +111,69 @@ class Channel(object):
 
         # Calculate delta time vector
         self._dt = self.data['timestamp'][1:] - self.data['timestamp'][:-1]
-        
-        # Load cache if necessary
-        if Channel.args.cache:
-            self._load_cache(lines)
-            
+                    
         print("done.")
 
-
-    def _load_cache(self, lines):
+    def _load_cache(self):
         # Try loading the pickled cache file
-        pkl_filename = Channel.args.data_dir + \
+        self.pkl_filename = Channel.args.data_dir + \
                        "/channel_{:d}_cache.pkl".format(self.chan_num)
-        pkl_file = None 
+
         try:
-            pkl_file = open(pkl_filename, "rb")
+            pkl_file = open(self.pkl_filename, "rb")
         except:
-            pass
+            self._cache = {}
         else:
             self._cache = pickle.load(pkl_file)
             pkl_file.close()
-            
-        # Check if the first timestamp in this Channel's data file
-        # corresponds to the first timestamp in the cache file
-        datafile_first_timecode = int(lines[0].split()[0])
-        if datafile_first_timecode != self._cache['first_timecode']:
-            self._cache = None
-            
-    def add_cache_to_table(self):
+
+    def add_cache_to_table(self, table):
         if not self._cache:
             return
         
-        Channel.cache_table.data_row([
+        table.update_first_timestamp(self._cache['first_timestamp'])
+        table.update_last_timestamp(self._cache['last_timestamp'])
+        
+        table.data_row([
           self.chan_num, self.label,
-          self._cache['size'],
-          datetime.datetime.fromtimestamp(self._cache['first_timestamp']),
-          datetime.datetime.fromtimestamp(self._cache['last_timestamp']),
+          self._cache['count'],
           self._cache['watts_min'], self._cache['watts_max'],
-          self._cache['dt_min'], self._cache['dt_max'], self._cache['dt_mean'],
+          self._cache['dt_min'], self._cache['dt_mean'], self._cache['dt_max'],
           self._cache['missed'],
           self._cache['kwh']
           ])
-        # TODO
 
     def update_and_save_cache(self):
-        pass
-        # TODO
+        if not Channel.args.cache:
+            return
+        
+        if self._cache:
+            self._cache['watts_min'] = min(self._cache['watts_min'], self.data['watts'].min())
+            self._cache['watts_max'] = max(self._cache['watts_max'], self.data['watts'].max())
+            self._cache['dt_min'] = min(self._cache['dt_min'], self._dt.min())
+            self._cache['dt_max'] = max(self._cache['dt_max'], self._dt.max())
+            total_size = self._cache['count'] + self.data.size 
+            self._cache['dt_mean'] = ((self._cache['dt_mean']*(self._cache['count']-1)) + self._dt.sum()) / (total_size-2)
+            self._cache['missed'] = ((self._cache['missed']*self._cache['count']) + (self._proportion_missed()*self.data.size)) / total_size 
+            self._cache['count'] = total_size
+            self._cache['kwh'] += self._kwh()
+        else:
+            self._cache['first_timestamp'] = self.data['timestamp'][0]
+            self._cache['watts_min'] = self.data['watts'].min()
+            self._cache['watts_max'] = self.data['watts'].max()
+            self._cache['dt_min'] = self._dt.min()
+            self._cache['dt_max'] = self._dt.max()
+            self._cache['dt_mean'] = self._dt.mean()
+            self._cache['missed'] = self._proportion_missed()
+            self._cache['count'] = self.data.size
+            self._cache['kwh'] = self._kwh()
+            
+        self._cache['last_timestamp'] = self.data['timestamp'][-1]
+        self._cache['filesize'] = os.path.getsize(self.data_filename)
+            
+        with open(self.pkl_filename, "wb") as output:
+            # "with" ensures we close the file, even if an exception occurs.
+            pickle.dump(self._cache, output)            
 
     def _kwh(self):
         if self.data is None:
@@ -147,7 +187,7 @@ class Channel(object):
         return self._kwh_cache
         
     def add_to_table(self):
-        if self._dt is None:
+        if self._dt is None or self._dt.size < 2:
             Channel.table.data_row([self.chan_num, self.label,
                                      0,'-',0,0,0,0,0,0,1,0])
             return
@@ -210,13 +250,21 @@ class Channel(object):
         
     @staticmethod
     def output_text_tables():
-        print(Channel.table)
+        print("NEW DATA:\n", Channel.table)
+        if Channel.args.cache and Channel.cache_table.data:
+            print("OLD DATA:\n", Channel.cache_table)
+            print("TOTALS:\n", Channel.totals_table)
 
     @staticmethod
     def output_html_tables():
-        html = "<p>"
+        html = "<h3>NEW DATA:</h3>\n"
         html += Channel.table.html()
-        html += "</p>"
+        if Channel.args.cache and Channel.cache_table.data:
+            html += "<h3>OLD DATA:</h3>\n"
+            html += Channel.cache_table.html()
+            html += "<h3>TOTALS:</h3>\n"
+            html += Channel.totals_table.html()
+
         return html
 
 
@@ -341,8 +389,9 @@ def main():
     for dummy, chan in channels.iteritems():
         chan.add_to_table()
         if args.cache:
-            chan.add_cache_to_table()
+            chan.add_cache_to_table(Channel.cache_table)
             chan.update_and_save_cache()
+            chan.add_cache_to_table(Channel.totals_table)
         if args.plot:
             chan.plot()
     
