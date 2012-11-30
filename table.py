@@ -1,5 +1,6 @@
 from __future__ import print_function
 import sys
+import datetime
 
 class Table:
     def __init__(self, col_width=7, data_format=None, col_sep=1):
@@ -20,6 +21,8 @@ class Table:
         self.sep_col_widths = isinstance(self.col_width, list)            
         self.data_format = data_format
         self.col_sep = col_sep
+        self.first_timestamp = None
+        self.last_timestamp = None
         
         if (self.sep_col_widths and self.data_format and
             len(self.data_format) != len(self.col_width)):
@@ -33,8 +36,45 @@ class Table:
     def data_row(self, d):
         self.data.append(d)
         
+    def update_first_timestamp(self, t):
+        if self.first_timestamp:
+            if t < self.first_timestamp:
+                self.first_timestamp = t
+        else:
+            self.first_timestamp = t
+
+    def update_last_timestamp(self, t):
+        if self.last_timestamp:
+            if t > self.last_timestamp:
+                self.last_timestamp = t
+        else:
+            self.last_timestamp = t
+
+    def html(self):
+        # HTML version of time details
+        time_details = self._time_details()
+        time_details = time_details.replace("\n", "</td>\n</tr>\n<tr>\n<td>")        
+        time_details = time_details.replace(": ", "</td>\n<td>")
+        s = "\n<table>\n<tr>\n<td>" + time_details + "</table>\n"
+        
+        s += "<table border=\"1\">\n"
+        for row in self.header:
+            s += "  <tr>\n"
+            s += self._list_to_html_row(row, header=True)
+            s += "  </tr>\n"
+            
+        for row in self.data:
+            s += "  <tr align=\"right\">\n"
+            s += self._list_to_html_row(row)
+            s += "  </tr>\n"
+            
+        s+= "</table>"
+        
+        return s        
+        
     def __str__(self):
-        s = ""
+        s = self._time_details() + "\n"
+        
         for row in self.header:
             s += self._list_to_plain_text_row(row, header=True).upper()
             s += "\n"
@@ -43,6 +83,19 @@ class Table:
             s += self._list_to_plain_text_row(row)
             s += "\n"
             
+        return s
+
+    def _time_details(self):
+        time_details = Table()
+        
+        if not self.first_timestamp:
+            return "NO DATA"
+        
+        start_dt = datetime.datetime.fromtimestamp(self.first_timestamp)
+        end_dt   = datetime.datetime.fromtimestamp(self.last_timestamp)
+        s =  "Start   : {}\n".format(start_dt)
+        s += "End     : {}\n".format(end_dt)
+        s += "Duration: {}\n".format(end_dt - start_dt)
         return s
     
     def _list_to_plain_text_row(self, lst, header=False):
@@ -95,23 +148,6 @@ class Table:
             col_i += cell_span
                             
         return text
-    
-    def html(self):
-        s = "<table border=\"1\">\n"
-        for row in self.header:
-            s += "  <tr>\n"
-            s += self._list_to_html_row(row, header=True)
-            s += "  </tr>\n"
-            
-        for row in self.data:
-            s += "  <tr align=\"right\">\n"
-            s += self._list_to_html_row(row)
-            s += "  </tr>\n"
-            
-        s+= "</table>"
-        
-        return s
-    
 
     def _list_to_html_row(self, lst, header=False):
         html = ""

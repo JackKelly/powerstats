@@ -1,23 +1,22 @@
 #! /usr/bin/python
 
-from __future__ import print_function
-from __future__ import division
+from __future__ import print_function, division
 import numpy as np
 import argparse
 import matplotlib.pyplot as plt
 import datetime
 import sys
 import os
+import pickle
 from table import Table
 
 MAX_PERIOD = 300 # seconds
 SAMPLE_PERIOD = 6 # seconds        
 
+
 class Channel(object):
     labels = {}
     args = None
-    first_timestamp = None
-    last_timestamp = None
     axes = None
     max_chan_num = 0
     
@@ -38,7 +37,11 @@ class Channel(object):
                       ])
     
     def __init__(self, chan_num=None):
-        self.dt = None
+        self._dt = None # delta time.
+        self._proportion_missed_cache = None
+        self._kwh_cache = None
+        self._cache = {}
+        
         if chan_num:
             self.chan_num = chan_num
             if self.chan_num > Channel.max_chan_num:
@@ -82,30 +85,69 @@ class Channel(object):
             return
         elif i != len(lines):
             self.data = np.resize(self.data, i)
-            
-        # Update Channel.first_timestamp and .last_timestamp
-        if (not Channel.first_timestamp 
-        or self.data["timestamp"][0] < Channel.first_timestamp):
-            Channel.first_timestamp = self.data["timestamp"][0]
-                
-        if (not Channel.last_timestamp
-        or self.data["timestamp"][-1] > Channel.last_timestamp):
-            Channel.last_timestamp = self.data["timestamp"][-1]
 
-        self.dt = self.data['timestamp'][1:] - self.data['timestamp'][:-1]
+        # Calculate delta time vector
+        self._dt = self.data['timestamp'][1:] - self.data['timestamp'][:-1]
+        
+        # Load cache if necessary
+        if Channel.args.cache:
+            self._load_cache(lines)
             
         print("done.")
+
+
+    def _load_cache(self, lines):
+        # Try loading the pickled cache file
+        pkl_filename = Channel.args.data_dir + \
+                       "/channel_{:d}_cache.pkl".format(self.chan_num)
+        pkl_file = None 
+        try:
+            pkl_file = open(pkl_filename, "rb")
+        except:
+            pass
+        else:
+            self._cache = pickle.load(pkl_file)
+            pkl_file.close()
             
+        # Check if the first timestamp in this Channel's data file
+        # corresponds to the first timestamp in the cache file
+        datafile_first_timecode = int(lines[0].split()[0])
+        if datafile_first_timecode != self._cache['first_timecode']:
+            self._cache = None
+            
+    def add_cache_to_table(self):
+        if not self._cache:
+            return
+        
+        Channel.cache_table.data_row([
+          self.chan_num, self.label,
+          self._cache['size'],
+          datetime.datetime.fromtimestamp(self._cache['first_timestamp']),
+          datetime.datetime.fromtimestamp(self._cache['last_timestamp']),
+          self._cache['watts_min'], self._cache['watts_max'],
+          self._cache['dt_min'], self._cache['dt_max'], self._cache['dt_mean'],
+          self._cache['missed'],
+          self._cache['kwh']
+          ])
+        # TODO
+
+    def update_and_save_cache(self):
+        pass
+        # TODO
+
     def _kwh(self):
         if self.data is None:
             return 0
 
-        dt_limited = np.where(self.dt>MAX_PERIOD, SAMPLE_PERIOD, self.dt)
-        watt_seconds = (dt_limited * self.data['watts'][:-1]).sum()           
-        return watt_seconds / 3600000
+        if not self._kwh_cache:
+            dt_limited = np.where(self._dt>MAX_PERIOD, SAMPLE_PERIOD, self._dt)
+            watt_seconds = (dt_limited * self.data['watts'][:-1]).sum()           
+            self._kwh_cache = watt_seconds / 3600000
+            
+        return self._kwh_cache
         
     def add_to_table(self):
-        if self.dt is None:
+        if self._dt is None:
             Channel.table.data_row([self.chan_num, self.label,
                                      0,'-',0,0,0,0,0,0,1,0])
             return
@@ -115,44 +157,24 @@ class Channel(object):
         else:
             is_sorted = "-"        
 
+        Channel.table.update_first_timestamp(self.data['timestamp'][0])
+        Channel.table.update_last_timestamp(self.data['timestamp'][-1])
+
         Channel.table.data_row([
                        self.chan_num, self.label, self.data.size, is_sorted,
                        self.data['watts'].min(), self.data['watts'].max(),
-                       self.dt.min(), self.dt.mean(), self.dt.max(), self.dt.std(),
+                       self._dt.min(), self._dt.mean(), self._dt.max(), self._dt.std(),
                        self._proportion_missed(),
                        self._kwh()])
+
         
     def _proportion_missed(self):
-        n_missed = ((self.dt // SAMPLE_PERIOD) * (self.dt > 10)).sum()
-        n_expected = n_missed + (self.dt <= 10).sum()
-        return n_missed / n_expected
-                
-    
-    @staticmethod
-    def timeperiod_table():
-        if not Channel.first_timestamp:
-            print("NO DATA! Command line options --start={}, --end={}"
-                           .format(Channel.args.start, Channel.args.end))
-            return
+        if not self._proportion_missed_cache:
+            n_missed = ((self._dt // SAMPLE_PERIOD) * (self._dt > 10)).sum()
+            n_expected = n_missed + (self._dt <= 10).sum()
+            self._proportion_missed_cache = n_missed / n_expected
+        return self._proportion_missed_cache
         
-        last = datetime.datetime.fromtimestamp(Channel.last_timestamp)
-        first = datetime.datetime.fromtimestamp(Channel.first_timestamp)
-           
-        htable = Table(col_width=[17,20,20])
-        
-        htable.data_row(["Start time",
-                         Channel.first_timestamp.__str__(),
-                         first.__str__()])
-        
-        htable.data_row(["End time",
-                         Channel.last_timestamp.__str__(),
-                         last.__str__()])
-        
-        htable.data_row(["Total time period",
-                         (last - first).__str__()])        
-
-        return htable
-    
     def _sort(self):
         """If self.data is sorted by timecode then return true,
         else sort rows in self.data by timecode and return false."""
@@ -166,7 +188,7 @@ class Channel(object):
             return False
         
     def plot(self):
-        if self.dt is None:
+        if self._dt is None:
             return
         
         # Power consumption
@@ -177,7 +199,7 @@ class Channel(object):
         pwr_line, = Channel.pwr_axes.plot(x, self.data['watts'], label=self.label)
                 
         # Plot missed samples
-        for i in (self.dt > 11).nonzero()[0]:
+        for i in (self._dt > 11).nonzero()[0]:
             start = x[i]
             end   = x[i+1]
             rect = plt.Rectangle((start, -self.chan_num), # bottom left corner
@@ -188,14 +210,11 @@ class Channel(object):
         
     @staticmethod
     def output_text_tables():
-        print(Channel.timeperiod_table())
         print(Channel.table)
 
     @staticmethod
     def output_html_tables():
         html = "<p>"
-        html += Channel.timeperiod_table().html()
-        html += "</p><p>"
         html += Channel.table.html()
         html += "</p>"
         return html
@@ -235,8 +254,8 @@ def setup_argparser():
                         ,default="labels.dat"
                         ,help="filename for labels data (default:'labels.dat')")
     
-    parser.add_argument('--no-high-values', dest='no_high_vals', action='store_const',
-                        const=True, default=False, 
+    parser.add_argument('--no-high-values', dest='allow_high_vals', action='store_const',
+                        const=False, default=True, 
                         help='Remove values >4000W for IAMs (default=False)')
     
     parser.add_argument('--sort', dest='sort', action='store_const',
@@ -259,9 +278,11 @@ def setup_argparser():
                         ,default=""
                         ,help="Unix timestamp to end time period.")    
 
-    args = parser.parse_args()
+    parser.add_argument('--cache', dest='cache', action='store_const',
+                        const=True, default=False, 
+                        help='Cache data for this timeperiod, starting from end of last period processed.')
 
-    args.allow_high_vals = not args.no_high_vals
+    args = parser.parse_args()
 
     # process paths
     args.data_dir = os.path.realpath(args.data_dir)
@@ -270,7 +291,7 @@ def setup_argparser():
         # if directory doesn't exist then create it
         if not os.path.isdir(args.html_dir):
             os.makedirs(args.html_dir)
-    
+
     # process start and end times
     args.start = convert_to_int(args.start, "start")
     args.end   = convert_to_int(args.end,   "end")
@@ -278,11 +299,11 @@ def setup_argparser():
         print("ERROR: start time", args.start, "is after end time", args.end,
               file=sys.stderr)
         sys.exit(2)
-       
+
     # turn off plotting if X is not attached
     if not os.environ.get('DISPLAY'):
         args.plot = False
-       
+
     return args
 
 
@@ -319,6 +340,9 @@ def main():
             
     for dummy, chan in channels.iteritems():
         chan.add_to_table()
+        if args.cache:
+            chan.add_cache_to_table()
+            chan.update_and_save_cache()
         if args.plot:
             chan.plot()
     
@@ -332,7 +356,7 @@ def main():
     else:
         Channel.output_text_tables()
         
-    if args.plot and Channel.first_timestamp:
+    if args.plot:
         Channel.hit_axes.autoscale_view()      
         Channel.hit_axes.set_xlim( Channel.pwr_axes.get_xlim() )
         Channel.hit_axes.set_ylim([-Channel.max_chan_num, 0])
