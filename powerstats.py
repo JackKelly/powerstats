@@ -4,6 +4,7 @@ from __future__ import print_function, division
 import numpy as np
 import argparse
 import matplotlib.pyplot as plt
+import matplotlib
 import datetime
 import sys
 import os
@@ -409,6 +410,9 @@ def main():
         Channel.hit_axes.autoscale_view()      
         Channel.hit_axes.set_xlim( Channel.pwr_axes.get_xlim() )
         Channel.hit_axes.set_ylim([-Channel.max_chan_num, 0])
+        date_formatter = matplotlib.dates.DateFormatter("%d/%m\n%H:%M")
+        Channel.hit_axes.xaxis.set_major_formatter( date_formatter )     
+        Channel.pwr_axes.xaxis.set_major_formatter( date_formatter )     
           
         plt.tight_layout()
         leg = Channel.pwr_axes.legend()
