@@ -3,6 +3,8 @@
 from __future__ import print_function, division
 import numpy as np
 import argparse
+import matplotlib
+matplotlib.use('Agg') # Don't use Xwindows backend (remove this line to use Xwindows backend)
 import matplotlib.pyplot as plt
 import datetime
 import sys
@@ -347,10 +349,6 @@ def setup_argparser():
         print("ERROR: start time", args.start, "is after end time", args.end,
               file=sys.stderr)
         sys.exit(2)
-
-    # turn off plotting if X is not attached
-    if not os.environ.get('DISPLAY'):
-        args.plot = False
 
     return args
 
