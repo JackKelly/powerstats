@@ -4,9 +4,7 @@ from __future__ import print_function, division
 import numpy as np
 import argparse
 import matplotlib
-matplotlib.use('Agg') # Don't use Xwindows backend (remove this line to use Xwindows backend)
 import matplotlib.pyplot as plt
-import matplotlib
 import datetime
 import sys
 import os
@@ -65,9 +63,9 @@ class Channel(object):
             if self.chan_num > Channel.max_chan_num:
                 Channel.max_chan_num = self.chan_num
             self.label = Channel.labels[chan_num] # TODO add error handling if no label
-            self._load()
             self.is_aggregate_chan = True if self.label in ["mains", "aggregate", "agg"] \
                                           else False
+            self._load()
         
     def _load(self):
         self.data_filename = Channel.args.data_dir + "/channel_{:d}.dat".format(self.chan_num) 
@@ -99,9 +97,11 @@ class Channel(object):
             if Channel.args.end and timestamp > Channel.args.end:
                 break
             watts = float(line[1])
+            
             if (self.args.allow_high_vals
-            or self.is_aggregate_chan
-            or watts < 4000):    
+                or self.is_aggregate_chan
+                or watts < 4000):
+                    
                 self.data[i] = (timestamp, watts) 
                 i += 1
                 
@@ -295,43 +295,36 @@ def convert_to_int(string, name):
 def setup_argparser():
     # Process command line _args
     parser = argparse.ArgumentParser(description="Generate simple stats for "
-                                                 "electricity power data logs.")
+                                                 "electricity power data logs."
+                                    ,epilog="example: ./powerstats.py  ~/data")
        
-    parser.add_argument('--data-dir', dest='data_dir', type=str
-                        ,default=""
-                        ,help='directory for storing data')
+    parser.add_argument('data_dir'
+                        ,help='directory from which to retrieve data (required).')
     
-    parser.add_argument('--labels-file', dest='labels_file', type=str
+    parser.add_argument('--labels-file'
                         ,default="labels.dat"
-                        ,help="filename for labels data (default:'labels.dat')")
+                        ,help="filename (without path) for labels data (default:'labels.dat').")
     
-    parser.add_argument('--no-high-values', dest='allow_high_vals', action='store_const',
-                        const=False, default=True, 
-                        help='Remove values >4000W for IAMs (default=False)')
+    parser.add_argument('--no-high-values', dest='allow_high_vals', action='store_false'
+                        ,help='Remove values >4000W for IAMs.')
     
-    parser.add_argument('--sort', dest='sort', action='store_const',
-                        const=True, default=False, 
-                        help='Pre-sort by date. Vital for MIT data (default=False)')
+    parser.add_argument('--sort', action='store_true'
+                        ,help='Pre-sort by date. Vital for MIT data.')
     
-    parser.add_argument('--no-plot', dest='plot', action='store_const',
-                        const=False, default=True, 
-                        help='Do not plot graph (default=False if X is available)')
+    parser.add_argument('--no-plot', dest='plot', action='store_false'
+                        ,help='Do not plot graph.')
     
-    parser.add_argument('--html-dir', dest='html_dir', type=str,
-                        default="", 
-                        help='Send stats and graphs directory as HTML')    
+    parser.add_argument('--html-dir', dest="html_dir"
+                        ,help='Output stats and graphs as HTML to this directory.')    
     
-    parser.add_argument('--start', dest='start', type=str
-                        ,default=""
+    parser.add_argument('--start'
                         ,help="Unix timestamp to start time period.")    
 
-    parser.add_argument('--end', dest='end', type=str
-                        ,default=""
+    parser.add_argument('--end'
                         ,help="Unix timestamp to end time period.")    
 
-    parser.add_argument('--cache', dest='cache', action='store_const',
-                        const=True, default=False, 
-                        help='Cache data for this timeperiod, starting from end of last period processed.')
+    parser.add_argument('--cache', action='store_true'
+                        ,help='Cache data for this timeperiod, starting from end of last cached period.')
 
     args = parser.parse_args()
 
@@ -351,13 +344,29 @@ def setup_argparser():
               file=sys.stderr)
         sys.exit(2)
 
+    # Feedback to the user
+    
+    print("\nSELECTED OPTIONS:")
+    print("*  input data directory = ", args.data_dir)
+    feedback_arg(args.allow_high_vals, "allowing high IAM values.")
+    feedback_arg(args.sort, "pre-sorting data")
+    feedback_arg(args.plot, "plotting")
+    feedback_arg(args.html_dir, "outputting HTML", "to file://{}/index.html".format(args.html_dir))
+    feedback_arg(args.cache, "caching data")
+    print("*  window starting at {}".format(args.start) if args.start else "*  window starting at beginning of data")
+    print("*  window ending at {}".format(args.end) if args.end else "*  window finishing at end of data")
+    print("")
+
     return args
+
+
+def feedback_arg(arg, text, optional_text=""):
+    """Provide feedback to the user about selected options."""
+    print("*", "" if arg else " not", text, optional_text if arg else "")
 
 
 def main():
     args = setup_argparser()
-    
-    print("data-dir = ", args.data_dir)
     
     try:
         labels = load_labels(args)
