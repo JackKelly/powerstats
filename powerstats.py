@@ -3,11 +3,13 @@
 from __future__ import print_function, division
 import numpy as np
 import argparse
+import os
 import matplotlib
+if not os.environ['DISPLAY']:
+    matplotlib.use('Agg') # use Agg backend if X isn't available
 import matplotlib.pyplot as plt
 import datetime
 import sys
-import os
 import pickle
 import copy
 from table import Table
