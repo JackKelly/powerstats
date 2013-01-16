@@ -22,7 +22,7 @@ class Channel(object):
     max_chan_num = 0
     
     table = Table(col_width=[5,11,6,3] + [6,6] + [6,6,6,6] + [10, 6],
-                  data_format=["{:d}","{:s}","{:d}","{}"] + ["{:.1f}"]*6 + ["{:.1%}", "{:.1f}"],
+                  data_format=["{:d}","{:s}","{:d}","{}","{:.1f}","{:.1f}","{}","{:.1f}","{}","{:.1f}","{:.1%}", "{:.1f}"],
                   col_sep=1)
     
     # Create two-row header
@@ -38,7 +38,7 @@ class Channel(object):
                       ])
 
     cache_table = Table(col_width=[5,11,6] + [6,6] + [6,6,6] + [10, 6],
-                        data_format=["{:d}","{:s}","{:d}"] + ["{:.1f}"]*5 + ["{:.1%}", "{:.1f}"])
+                        data_format=["{:d}","{:s}","{:d}","{:.1f}","{:.1f}","{}","{:.1f}","{}","{:.1%}", "{:.1f}"])
     cache_table.header_row([(3, ""), (2, "POWER (W)", "-"), (3, "SAMPLE PERIOD (s)", "-"), (2, "")])
     cache_table.header_row(["#", 
                       "name", 

@@ -141,8 +141,11 @@ class Table:
             if (isinstance(cell_text, (int, long, float)) and 
                 cell_text > max_val) :
                 cell_text = "{:.0e}".format(cell_text)
-            elif not header and self.data_format:
-                cell_text = self.data_format[col_i].format(cell_text)                
+            elif not header and self.data_format:   
+                try:             
+                    cell_text = self.data_format[col_i].format(cell_text)
+                except ValueError:
+                    cell_text = str(cell_text)
             else:
                 cell_text = str(cell_text)
                 
