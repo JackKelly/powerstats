@@ -5,7 +5,7 @@ import numpy as np
 import argparse
 import os
 import matplotlib
-if not os.environ['DISPLAY']:
+if not os.environ.get('DISPLAY'):
     matplotlib.use('Agg') # use Agg backend if X isn't available
 import matplotlib.pyplot as plt
 import datetime
