@@ -8,4 +8,6 @@ html/
 data/
 data*/
 *.tar.gz
+build/
+powerstats.egg-info/
 
