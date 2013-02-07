@@ -298,10 +298,17 @@ def setup_argparser():
     # Process command line _args
     parser = argparse.ArgumentParser(description="Generate simple stats for "
                                                  "electricity power data logs."
-                                    ,epilog="example: ./powerstats.py  ~/data")
+                                    ,epilog="example: ./powerstats.py  --data-dir ~/data")
        
-    parser.add_argument('data_dir'
-                        ,help='directory from which to retrieve data (required).')
+    parser.add_argument('--data-dir'
+                        ,dest="data_dir"
+                        ,default=os.environ.get("DATA_DIR")
+                        ,help='directory from which to retrieve data.')
+    
+    parser.add_argument('--numeric-subdirs'
+                        ,dest='numeric_subdirs'
+                        ,action='store_true'
+                        ,help='Data is stored within numerically named subdirs in base data dir.')
     
     parser.add_argument('--labels-file'
                         ,default="labels.dat"
@@ -315,6 +322,9 @@ def setup_argparser():
     
     parser.add_argument('--no-plot', dest='plot', action='store_false'
                         ,help='Do not plot graph.')
+
+    parser.add_argument('--html', action='store_true'
+                        ,help='Output HTML to data-dir/html/')
     
     parser.add_argument('--html-dir', dest="html_dir"
                         ,help='Output stats and graphs as HTML to this directory.')    
@@ -330,8 +340,26 @@ def setup_argparser():
 
     args = parser.parse_args()
 
-    # process paths
-    args.data_dir = os.path.realpath(args.data_dir)
+    # process data dir
+    if args.data_dir:
+        args.data_dir = os.path.realpath(args.data_dir)
+    else:
+        sys.exit("\nERROR: Please specify a data directory either using the --data-dir \n"
+                 "       command line option or using the $DATA_DIR environment variable.\n")
+
+    # process numeric_subdirs
+    if args.numeric_subdirs:
+        # find the highest number data_dir
+        existing_subdirs = os.walk(args.data_dir).next()[1]
+        if existing_subdirs:
+            existing_subdirs.sort()
+            args.data_dir += "/" + existing_subdirs[-1]
+
+    # process html
+    if args.html:
+        args.html_dir = args.data_dir + "/html"
+
+    # process html_dir
     if args.html_dir:
         args.html_dir = os.path.realpath(args.html_dir)
         # if directory doesn't exist then create it
@@ -347,9 +375,9 @@ def setup_argparser():
         sys.exit(2)
 
     # Feedback to the user
-    
     print("\nSELECTED OPTIONS:")
     print("*  input data directory = ", args.data_dir)
+    feedback_arg(args.numeric_subdirs, "using numeric subdirectories.")
     feedback_arg(args.allow_high_vals, "allowing high IAM values.")
     feedback_arg(args.sort, "pre-sorting data")
     feedback_arg(args.plot, "plotting")
