@@ -70,8 +70,9 @@ class Channel(object):
             self._load()
         
     def _load(self):
-        self.data_filename = Channel.args.data_dir + "/channel_{:d}.dat".format(self.chan_num) 
-        print("Loading", self.data_filename, "...", end="")
+        filename = "channel_{:d}.dat".format(self.chan_num)
+        print("Loading ", filename, "... ", end="", sep="")        
+        self.data_filename = Channel.args.data_dir + "/" + filename
 
         # Load cache if necessary
         if Channel.args.cache:
@@ -107,9 +108,12 @@ class Channel(object):
                 self.data[i] = (timestamp, watts) 
                 i += 1
                 
+        print(i, "lines loaded... ", end="")
+                
         # Resize self.data if we didn't take every line
         if not i:
             self.data = None
+            print("No new data loaded!")
             return
         elif i != len(lines):
             self.data = np.resize(self.data, i)
@@ -117,7 +121,7 @@ class Channel(object):
         # Calculate delta time vector
         self._dt = self.data['timestamp'][1:] - self.data['timestamp'][:-1]
                     
-        print("done.")
+        print("Done.")
 
     def _load_cache(self):
         # Try loading the pickled cache file
@@ -149,7 +153,7 @@ class Channel(object):
           ])
 
     def update_and_save_cache(self):
-        if not Channel.args.cache:
+        if not Channel.args.cache or self.data is None:
             return
         
         if self._cache:
