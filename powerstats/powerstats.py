@@ -53,6 +53,7 @@ class Channel(object):
     
     totals_table = copy.deepcopy(cache_table)
 
+    data_to_plot = False
     
     def __init__(self, chan_num=None):
         self._dt = None # delta time.
@@ -237,8 +238,10 @@ class Channel(object):
             return False
         
     def plot(self):
-        if self._dt is None:
+        if self._dt is None or self.data is None:
             return
+        else:
+            Channel.data_to_plot = True
         
         # Power consumption
         x = np.empty(self.data.size, dtype="object")
@@ -441,13 +444,16 @@ def main():
         html_file = open(args.html_dir + "/index.html", "w")
         html_file.write("<!DOCTYPE html>\n<html>\n<body>")
         html_file.write(Channel.output_html_tables())
-        html_file.write("<img src=\"fig.png\"/>")
+        if Channel.data_to_plot:
+            html_file.write("<img src=\"fig.png\"/>")
+        else:
+            html_file.write("<p>No new data to plot!</p>")
         html_file.write("</body>\n</html>")
         html_file.close()
     else:
         Channel.output_text_tables()
         
-    if args.plot:
+    if args.plot and Channel.data_to_plot:
         Channel.hit_axes.autoscale_view()      
         Channel.hit_axes.set_xlim( Channel.pwr_axes.get_xlim() )
         Channel.hit_axes.set_ylim([-Channel.max_chan_num, 0])
@@ -464,8 +470,9 @@ def main():
             plt.savefig(args.html_dir + "/fig.png", bbox_inches=0)
         else:
             plt.show()
-            
 
+    if not Channel.data_to_plot:
+        print("No new data to plot.")        
 
 if __name__ == "__main__":
     main()
