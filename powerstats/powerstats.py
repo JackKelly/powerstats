@@ -455,7 +455,7 @@ def main():
     else:
         Channel.output_text_tables()
         
-    if args.plot and Channel.data_to_plot:
+    if args.plot and Channel.data_to_plot:        
         Channel.hit_axes.autoscale_view()      
         Channel.hit_axes.set_xlim( Channel.pwr_axes.get_xlim() )
         Channel.hit_axes.set_ylim([-Channel.max_chan_num, 0])
@@ -464,7 +464,12 @@ def main():
         Channel.pwr_axes.xaxis.set_major_formatter( date_formatter )     
           
         plt.tight_layout()
-        leg = Channel.pwr_axes.legend()
+        
+        # Shrink axes by 20%       
+        scale_width(Channel.hit_axes, 0.8)
+        scale_width(Channel.pwr_axes, 0.8)
+        
+        leg = Channel.pwr_axes.legend(bbox_to_anchor=(1, 1), loc="upper left")
         for t in leg.get_texts():
             t.set_fontsize('small')
                 
@@ -474,7 +479,18 @@ def main():
             plt.show()
 
     if not Channel.data_to_plot:
-        print("No new data to plot.")        
+        print("No new data to plot.")
+
+
+def scale_width(ax, scale):
+    """
+    Parameters:
+        - ax (matplotlib axes)
+        - scale (float)
+    """
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width*scale, box.height])
+    # Taken from http://stackoverflow.com/a/4701285/732596
 
 if __name__ == "__main__":
     main()
