@@ -248,7 +248,8 @@ class Channel(object):
         for i in range(self.data.size):
             x[i] = datetime.datetime.fromtimestamp(self.data["timestamp"][i])
             
-        pwr_line, = Channel.pwr_axes.plot(x, self.data['watts'], label=self.label)
+        pwr_line, = Channel.pwr_axes.plot(x, self.data['watts'], label=
+                                          str(self.chan_num)+" "+self.label)
                 
         # Plot missed samples
         for i in (self._dt > 11).nonzero()[0]:
@@ -281,6 +282,12 @@ class Channel(object):
 
 
 def load_labels(args):
+    """
+    Loads data from labels.dat file.
+    
+    Returns:
+        A dict mapping channel numbers (ints) to appliance names (str)
+    """
     with open(args.data_dir + "/" + args.labels_file) as labels_file:
         lines = labels_file.readlines()
     
@@ -399,29 +406,44 @@ def setup_argparser():
     return args
 
 
+def scale_width(ax, scale):
+    """
+    Scales the width of a matplotlib.axes object.
+    
+    Args:
+        - ax (matplotlib.axes)
+        - scale (float)
+    """
+    # Taken from http://stackoverflow.com/a/4701285/732596    
+    box = ax.get_position()
+    ax.set_position([box.x0, box.y0, box.width*scale, box.height])
+
+
 def feedback_arg(arg, text, optional_text=""):
     """Provide feedback to the user about selected options."""
     print("*", "" if arg else " not", text, optional_text if arg else "")
 
 
 def main():
+    # Load command-line arguments
     args = setup_argparser()
+    Channel.args = args    
     
+    # Load labels.dat
     try:
         labels = load_labels(args)
     except IOError, e:
         sys.exit(e)
-
     Channel.labels = labels
-    Channel.args = args
     
+    # Load channel data
     channels = {}
-    
     for chan_num in labels.keys():
         channels[chan_num] = Channel(chan_num)
         
     print("")
 
+    # Setup matplotlib figure (but don't plot anything yet)
     if args.plot:
         fig = plt.figure(figsize=(14,6))
         Channel.pwr_axes = fig.add_subplot(2,1,1)
@@ -432,7 +454,8 @@ def main():
         Channel.hit_axes = fig.add_subplot(2,1,2) # for plotting missed samples
         Channel.hit_axes.set_title("Drop-outs")  
         Channel.hit_axes.xaxis.axis_date()  
-            
+    
+    # Produce data for stats tables, update cache and plot channel data
     for dummy, chan in channels.iteritems():
         chan.add_to_table()
         if args.cache:
@@ -442,6 +465,7 @@ def main():
         if args.plot:
             chan.plot()
     
+    # Output stats tables as HTML or to stdout
     if args.html_dir:
         html_file = open(args.html_dir + "/index.html", "w")
         html_file.write("<!DOCTYPE html>\n<html>\n<body>")
@@ -455,24 +479,27 @@ def main():
     else:
         Channel.output_text_tables()
         
-    if args.plot and Channel.data_to_plot:        
+    # Finish formatting plots and output to screen or file
+    if args.plot and Channel.data_to_plot:
+        # Format axes
         Channel.hit_axes.autoscale_view()      
         Channel.hit_axes.set_xlim( Channel.pwr_axes.get_xlim() )
         Channel.hit_axes.set_ylim([-Channel.max_chan_num, 0])
         date_formatter = matplotlib.dates.DateFormatter("%d/%m\n%H:%M")
         Channel.hit_axes.xaxis.set_major_formatter( date_formatter )     
         Channel.pwr_axes.xaxis.set_major_formatter( date_formatter )     
-          
         plt.tight_layout()
         
-        # Shrink axes by 20%       
+        # Shrink axes by 20% to make space for legend   
         scale_width(Channel.hit_axes, 0.8)
         scale_width(Channel.pwr_axes, 0.8)
         
+        # Create and format legend
         leg = Channel.pwr_axes.legend(bbox_to_anchor=(1, 1), loc="upper left")
         for t in leg.get_texts():
             t.set_fontsize('small')
                 
+        # Output plot to chosen destination
         if args.html_dir:
             plt.savefig(args.html_dir + "/fig.png", bbox_inches=0)
         else:
@@ -481,16 +508,6 @@ def main():
     if not Channel.data_to_plot:
         print("No new data to plot.")
 
-
-def scale_width(ax, scale):
-    """
-    Parameters:
-        - ax (matplotlib axes)
-        - scale (float)
-    """
-    box = ax.get_position()
-    ax.set_position([box.x0, box.y0, box.width*scale, box.height])
-    # Taken from http://stackoverflow.com/a/4701285/732596
 
 if __name__ == "__main__":
     main()
