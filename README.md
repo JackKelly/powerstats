@@ -6,6 +6,8 @@ power data.  Statistics include (for each channel):
 * Min, mean, max and stdev for power consumption
 * Is the channel sorted by timecode?
 
+## Manual
+
 Please run <code>powerstats/powerstats.py --help</code> for a full list of command line options.
 
 ## Related projects
