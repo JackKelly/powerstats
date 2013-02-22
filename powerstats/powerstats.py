@@ -8,6 +8,7 @@ import matplotlib
 if not os.environ.get('DISPLAY'):
     matplotlib.use('Agg') # use Agg backend if X isn't available
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 import datetime
 import sys
 import pickle
@@ -456,13 +457,15 @@ def main():
 
     # Setup matplotlib figure (but don't plot anything yet)
     if args.plot:
-        fig = plt.figure(figsize=(14,6))
-        Channel.pwr_axes = fig.add_subplot(2,1,1)
+        fig = plt.figure(figsize=(14,10))
+        gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
+        Channel.pwr_axes = plt.subplot(gs[0])
         Channel.pwr_axes.set_title("Power consumption")
         Channel.pwr_axes.set_xlabel("time")
         Channel.pwr_axes.set_ylabel("watts")
         
-        Channel.hit_axes = fig.add_subplot(2,1,2) # for plotting missed samples
+        # Axes for plotting missed samples
+        Channel.hit_axes = plt.subplot(gs[1])
         Channel.hit_axes.set_title("Drop-outs")  
         Channel.hit_axes.xaxis.axis_date()  
     
