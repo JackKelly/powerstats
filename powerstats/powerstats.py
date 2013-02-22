@@ -318,13 +318,14 @@ def setup_argparser():
        
     parser.add_argument('--data-dir'
                         ,dest="data_dir"
-                        ,default=os.environ.get("DATA_DIR")
+                        ,default=None
                         ,help='directory from which to retrieve data.')
     
     parser.add_argument('--numeric-subdirs'
                         ,dest='numeric_subdirs'
                         ,action='store_true'
-                        ,help='Data is stored within numerically named subdirs in base data dir.')
+                        ,help='Data is stored within numerically named subdirs in base data dir.\n'
+                              'Defaults to TRUE if data-dir is taken from $DATA_DIR env variable.')
     
     parser.add_argument('--labels-file'
                         ,default="labels.dat"
@@ -357,6 +358,10 @@ def setup_argparser():
     args = parser.parse_args()
 
     # process data dir
+    if args.data_dir is None:
+        args.data_dir = os.environ.get("DATA_DIR")
+        args.numeric_subdirs = True
+    
     if args.data_dir:
         args.data_dir = os.path.realpath(args.data_dir)
     else:
