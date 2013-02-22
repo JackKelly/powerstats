@@ -364,12 +364,18 @@ def setup_argparser():
                  "       command line option or using the $DATA_DIR environment variable.\n")
 
     # process numeric_subdirs
+    # find the highest number subdirectory
     if args.numeric_subdirs:
-        # find the highest number data_dir
         existing_subdirs = os.walk(args.data_dir).next()[1]
-        if existing_subdirs:
-            existing_subdirs.sort()
-            args.data_dir += "/" + existing_subdirs[-1]
+        
+        # Remove any subdirs which contain alphabetic characters
+        numeric_subdirs = [subdir for subdir in existing_subdirs 
+                           if not any(char.isalpha() for char in subdir)]
+
+        if numeric_subdirs:
+            numeric_subdirs.sort()
+            args.data_dir += "/" + numeric_subdirs[-1]
+
 
     # process html
     if args.html:
