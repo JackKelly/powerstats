@@ -1,6 +1,7 @@
 from __future__ import print_function
 import sys
 import datetime
+import cgi
 
 class Table:
     def __init__(self, col_width=7, data_format=None, col_sep=1):
@@ -190,7 +191,7 @@ class Table:
             
             col_i += cell_span
                                         
-        return html
+        return cgi.escape(html).encode('ascii', 'xmlcharrefreplace')
 
 
 def main():
