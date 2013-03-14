@@ -24,7 +24,7 @@ class Channel(object):
     axes = None
     max_chan_num = 0
     
-    NAME_COL_WIDTH = 18
+    NAME_COL_WIDTH = 20
     
     table = Table(col_width=[5,NAME_COL_WIDTH,6,3] + [6,6] + [6,6,6,6] + [10, 6],
                   data_format=["{:d}","{:s}","{:d}","{}","{:.1f}","{:.1f}","{}","{:.1f}","{}","{:.1f}","{:.1%}", "{:.1f}"],
