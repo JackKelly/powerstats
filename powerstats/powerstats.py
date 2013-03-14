@@ -24,7 +24,9 @@ class Channel(object):
     axes = None
     max_chan_num = 0
     
-    table = Table(col_width=[5,11,6,3] + [6,6] + [6,6,6,6] + [10, 6],
+    NAME_COL_WIDTH = 18
+    
+    table = Table(col_width=[5,NAME_COL_WIDTH,6,3] + [6,6] + [6,6,6,6] + [10, 6],
                   data_format=["{:d}","{:s}","{:d}","{}","{:.1f}","{:.1f}","{}","{:.1f}","{}","{:.1f}","{:.1%}", "{:.1f}"],
                   col_sep=1)
     
@@ -40,7 +42,7 @@ class Channel(object):
                       "kwh"
                       ])
 
-    cache_table = Table(col_width=[5,11,6] + [6,6] + [6,6,6] + [10, 6],
+    cache_table = Table(col_width=[5,NAME_COL_WIDTH,6] + [6,6] + [6,6,6] + [10, 6],
                         data_format=["{:d}","{:s}","{:d}","{:.1f}","{:.1f}","{}","{:.1f}","{}","{:.1%}", "{:.1f}"])
     cache_table.header_row([(3, ""), (2, "POWER (W)", "-"), (3, "SAMPLE PERIOD (s)", "-"), (2, "")])
     cache_table.header_row(["#", 
