@@ -177,6 +177,9 @@ class Table:
                 cell_text = self.data_format[col_i].format(cell_text)                
             else:
                 cell_text = str(cell_text)
+                
+            cell_text = cgi.escape(cell_text).encode('ascii',
+                                                     'xmlcharrefreplace')
             
             if header:
                 row_type = "h"
@@ -191,7 +194,7 @@ class Table:
             
             col_i += cell_span
                                         
-        return cgi.escape(html).encode('ascii', 'xmlcharrefreplace')
+        return html
 
 
 def main():
