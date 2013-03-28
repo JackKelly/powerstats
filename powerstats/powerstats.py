@@ -478,7 +478,7 @@ def load_high_freq_mains(high_freq_mains_dir, start_timestamp, end_timestamp):
     # but we only open one.  In the vast majority of cases, this limitation
     # won't be an issue)
     dat_files.sort()
-    data_filename = dat_files[-1]
+    data_filename = high_freq_mains_dir + "/" + dat_files[-1]
     
     Channel.args.start = start_timestamp
 
