@@ -515,22 +515,7 @@ def main():
         channels[chan_num] = Channel(chan_num)
         if chan_num > max_chan_num:
             max_chan_num = chan_num
-        
-    # Load sound card power meter data (if available)
-    HIGH_FREQ_MAINS_DIR = args.base_data_dir + "/high-freq-mains" 
-    if os.path.isdir(HIGH_FREQ_MAINS_DIR):
-        real_power, apparent_power = load_high_freq_mains(HIGH_FREQ_MAINS_DIR,
-                                                          Channel.table.first_timestamp,
-                                                          Channel.table.last_timestamp)
-        
-        if real_power:
-            real_power.chan_num = max_chan_num + 1
-            apparent_power.chan_num = max_chan_num + 2
-            
-            channels[real_power.chan_num] = real_power
-            channels[apparent_power.chan_num] = apparent_power
-            max_chan_num += 2
-        
+                
     print("")
 
     # Setup matplotlib figure (but don't plot anything yet)
@@ -556,6 +541,21 @@ def main():
             chan.add_cache_to_table(Channel.totals_table)
         if args.plot:
             chan.plot()
+    
+    # Load sound card power meter data (if available)
+    HIGH_FREQ_MAINS_DIR = args.base_data_dir + "/high-freq-mains" 
+    if os.path.isdir(HIGH_FREQ_MAINS_DIR):
+        real_power, apparent_power = load_high_freq_mains(HIGH_FREQ_MAINS_DIR,
+                                                          Channel.table.first_timestamp,
+                                                          Channel.table.last_timestamp)
+        
+        if real_power:
+            real_power.chan_num = max_chan_num + 1
+            apparent_power.chan_num = max_chan_num + 2
+            
+            channels[real_power.chan_num] = real_power
+            channels[apparent_power.chan_num] = apparent_power
+            max_chan_num += 2    
     
     # Output stats tables as HTML or to stdout
     if args.html_dir:
