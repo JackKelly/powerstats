@@ -13,6 +13,7 @@ import datetime
 import sys
 import pickle
 import copy
+import time
 from table import Table
 
 MAX_PERIOD = 300 # seconds
@@ -22,7 +23,6 @@ class Channel(object):
     labels = {}
     args = None
     axes = None
-    max_chan_num = 0
     
     NAME_COL_WIDTH = 20
     
@@ -66,21 +66,30 @@ class Channel(object):
         
         if chan_num:
             self.chan_num = chan_num
-            if self.chan_num > Channel.max_chan_num:
-                Channel.max_chan_num = self.chan_num
             self.label = Channel.labels[chan_num] # TODO add error handling if no label
             self.is_aggregate_chan = True if self.label in ["mains", "aggregate", "agg"] \
                                           else False
             self._load()
         
-    def _load(self):
-        filename = "channel_{:d}.dat".format(self.chan_num)
+    def _load(self, filename=None, data_type=None):
+        """
+        Args:
+            filename (str): (optional) filename with full path
+            data_type (str): (optional) one of the following:
+                - "apparent_power"
+                - "real_power"
+        """
+        if filename:
+            self.data_filename = filename
+        else:
+            filename = "channel_{:d}.dat".format(self.chan_num)
+            self.data_filename = Channel.args.data_dir + "/" + filename
+            
         print("Loading ", filename, "... ", end="", sep="")        
-        self.data_filename = Channel.args.data_dir + "/" + filename
 
-        # Load cache if necessary
-        if Channel.args.cache:
-            self._load_cache()        
+        # Load cache if necessary (don't use cache for high freq data)
+        if Channel.args.cache and data_type is None:
+            self._load_cache(data_type)        
         
         # Load data file
         try:
@@ -95,7 +104,13 @@ class Channel(object):
                 
         self.data = np.zeros(len(lines), 
                              dtype=[('timestamp', np.uint32), ('watts', float)])
-        i = 0
+        
+        if data_type is None or data_type == "real_power":
+            power_column = 1
+        elif data_type == "apparent_power":
+            power_column = 2
+        
+        i = 0    
         for line in lines:
             line = line.split()
             timestamp = int(line[0])
@@ -103,7 +118,7 @@ class Channel(object):
                 continue
             if Channel.args.end and timestamp > Channel.args.end:
                 break
-            watts = float(line[1])
+            watts = float(line[power_column])
             
             if (self.args.allow_high_vals
                 or self.is_aggregate_chan
@@ -320,7 +335,7 @@ def setup_argparser():
                                     ,epilog="example: ./powerstats.py  --data-dir ~/data")
        
     parser.add_argument('--data-dir'
-                        ,dest="data_dir"
+                        ,dest="base_data_dir"
                         ,default=None
                         ,help='directory from which to retrieve data.')
     
@@ -361,15 +376,17 @@ def setup_argparser():
     args = parser.parse_args()
 
     # process data dir
-    if args.data_dir is None:
-        args.data_dir = os.environ.get("DATA_DIR")
+    if args.base_data_dir is None:
+        args.base_data_dir = os.environ.get("DATA_DIR")
         args.numeric_subdirs = True
-    
-    if args.data_dir:
-        args.data_dir = os.path.realpath(args.data_dir)
+
+    if args.base_data_dir:
+        args.base_data_dir = os.path.realpath(args.base_data_dir)
     else:
         sys.exit("\nERROR: Please specify a data directory either using the --data-dir \n"
                  "       command line option or using the $DATA_DIR environment variable.\n")
+
+    args.data_dir = copy.deepcopy(args.base_data_dir)
 
     # process numeric_subdirs
     # find the highest number subdirectory
@@ -438,10 +455,52 @@ def feedback_arg(arg, text, optional_text=""):
     print("*", "" if arg else " not", text, optional_text if arg else "")
 
 
+def load_high_freq_mains(high_freq_mains_dir, start_timestamp, end_timestamp):
+    print("Loading high frequency mains data...")
+    dir_listing = os.listdir(high_freq_mains_dir)
+    
+    # Find all .dat files
+    # 'f' is short for 'file'
+    dat_files = [f for f in dir_listing if f.rpartition('.')[-1]=='dat']
+    
+    # find set of dat files which start before end_timestamp
+    dat_files = [s for s in dat_files # 's' is short for 'string'
+                 if time.mktime(time.strptime(s, 'mains-%Y_%m_%d_%H_%M_%S.dat')) 
+                 < end_timestamp]
+    
+    if not dat_files:
+        print("No high frequency dat files found with start times before",
+              end_timestamp)
+        return None, None
+    
+    # open last dat file (a limitation of this code: there may be multiple dat 
+    # files covering the time period between start_timestamp and end_timestamp
+    # but we only open one.  In the vast majority of cases, this limitation
+    # won't be an issue)
+    dat_files.sort()
+    data_filename = dat_files[-1]
+    
+    Channel.args.start = start_timestamp
+
+    real_power = Channel()
+    real_power.label = "real power"
+    real_power.is_aggregate_chan = True
+    real_power._load(filename=data_filename, data_type="real_power")
+    
+    apparent_power = Channel()
+    apparent_power.label = "apparent power"
+    apparent_power.is_aggregate_chan = True
+    apparent_power._load(filename=data_filename, data_type="apparent_power")
+        
+    return real_power, apparent_power
+    
+
 def main():
     # Load command-line arguments
     args = setup_argparser()
     Channel.args = args    
+    
+    max_chan_num = 0
     
     # Load labels.dat
     try:
@@ -454,6 +513,23 @@ def main():
     channels = {}
     for chan_num in labels.keys():
         channels[chan_num] = Channel(chan_num)
+        if chan_num > max_chan_num:
+            max_chan_num = chan_num
+        
+    # Load sound card power meter data (if available)
+    HIGH_FREQ_MAINS_DIR = args.base_data_dir + "/high-freq-mains" 
+    if os.path.isdir(HIGH_FREQ_MAINS_DIR):
+        real_power, apparent_power = load_high_freq_mains(HIGH_FREQ_MAINS_DIR,
+                                                          Channel.table.first_timestamp,
+                                                          Channel.table.last_timestamp)
+        
+        if real_power:
+            real_power.chan_num = max_chan_num + 1
+            apparent_power.chan_num = max_chan_num + 2
+            
+            channels[real_power.chan_num] = real_power
+            channels[apparent_power.chan_num] = apparent_power
+            max_chan_num += 2
         
     print("")
 
@@ -500,7 +576,7 @@ def main():
         # Format axes
         Channel.hit_axes.autoscale_view()      
         Channel.hit_axes.set_xlim( Channel.pwr_axes.get_xlim() )
-        Channel.hit_axes.set_ylim([-Channel.max_chan_num, 0])
+        Channel.hit_axes.set_ylim([-max_chan_num, 0])
         date_formatter = matplotlib.dates.DateFormatter("%d/%m\n%H:%M")
         Channel.hit_axes.xaxis.set_major_formatter( date_formatter )     
         Channel.pwr_axes.xaxis.set_major_formatter( date_formatter )     
