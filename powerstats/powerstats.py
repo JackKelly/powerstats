@@ -113,7 +113,7 @@ class Channel(object):
         i = 0    
         for line in lines:
             line = line.split()
-            timestamp = int(line[0])
+            timestamp = int(round(float(line[0])))
             if Channel.args.start and timestamp < Channel.args.start:
                 continue
             if Channel.args.end and timestamp > Channel.args.end:
