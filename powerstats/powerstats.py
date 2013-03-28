@@ -550,11 +550,17 @@ def main():
                                                           Channel.table.last_timestamp)
         
         if real_power is not None:
-            
-            # TODO: run .plot and .add_to_table for real_power and apparent_power
+            # TODO: run .plot and .add_to_table for
+            #       real_power and apparent_power.
             
             real_power.chan_num = max_chan_num + 1
             apparent_power.chan_num = max_chan_num + 2
+            
+            real_power.add_to_table()
+            apparent_power.add_to_table()
+            if args.plot():
+                real_power.plot()
+                apparent_power.plot()
             
             channels[real_power.chan_num] = real_power
             channels[apparent_power.chan_num] = apparent_power
