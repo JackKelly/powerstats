@@ -558,7 +558,7 @@ def main():
             
             real_power.add_to_table()
             apparent_power.add_to_table()
-            if args.plot():
+            if args.plot:
                 real_power.plot()
                 apparent_power.plot()
             
