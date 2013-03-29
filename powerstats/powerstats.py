@@ -89,7 +89,7 @@ class Channel(object):
 
         # Load cache if necessary (don't use cache for high freq data)
         if Channel.args.cache and data_type is None:
-            self._load_cache(data_type)        
+            self._load_cache()        
         
         # Load data file
         try:
