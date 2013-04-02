@@ -95,6 +95,7 @@ class Channel(object):
         try:
             with open(self.data_filename) as data_file:
                 if self._cache:
+                    print("seeking to", self._cache['filesize'], end="... ")
                     data_file.seek(self._cache['filesize'])
                 lines = data_file.readlines()
         except IOError:
@@ -102,6 +103,8 @@ class Channel(object):
             print("doesn't exist. Skipping.")
             return
                 
+        print("read", len(lines), "lines... ")
+        print("     ", end="")
         self.data = np.zeros(len(lines), 
                              dtype=[('timestamp', np.uint32), ('watts', float)])
         
@@ -117,6 +120,7 @@ class Channel(object):
             if Channel.args.start and timestamp < Channel.args.start:
                 continue
             if Channel.args.end and timestamp > Channel.args.end:
+                print("timestamp", timestamp, "is after Channel.args.end=", Channel.args.end, sep=" ")
                 break
             watts = float(line[power_column])
             
@@ -127,7 +131,7 @@ class Channel(object):
                 self.data[i] = (timestamp, watts) 
                 i += 1
                 
-        print(i, "lines loaded... ", end="")
+        print(i, "lines processed... ", end="")
                 
         # Resize self.data if we didn't take every line
         if not i:
@@ -340,7 +344,7 @@ def setup_argparser():
                         ,help='directory from which to retrieve data.')
     
     parser.add_argument('--numeric-subdirs'
-                        ,dest='numeric_subdirs'
+                        ,dest='use_numeric_subdirs'
                         ,action='store_true'
                         ,help='Data is stored within numerically named subdirs in base data dir.\n'
                               'Defaults to TRUE if data-dir is taken from $DATA_DIR env variable.')
@@ -378,7 +382,7 @@ def setup_argparser():
     # process data dir
     if args.base_data_dir is None:
         args.base_data_dir = os.environ.get("DATA_DIR")
-        args.numeric_subdirs = True
+        args.use_numeric_subdirs = True
 
     if args.base_data_dir:
         args.base_data_dir = os.path.realpath(args.base_data_dir)
@@ -388,20 +392,22 @@ def setup_argparser():
         sys.exit("\nERROR: Please specify a data directory either using the --data-dir \n"
                  "       command line option or using the $DATA_DIR environment variable.\n")
 
-    args.data_dir = copy.deepcopy(args.base_data_dir)
-
-    # process numeric_subdirs
+    # process use_numeric_subdirs
     # find the highest number subdirectory
-    if args.numeric_subdirs:
+    if args.use_numeric_subdirs:
         existing_subdirs = os.walk(args.base_data_dir).next()[1]
         
         # Remove any subdirs which contain alphabetic characters
         numeric_subdirs = [subdir for subdir in existing_subdirs 
                            if not any(char.isalpha() for char in subdir)]
+    else:
+        numeric_subdirs = None
 
-        if numeric_subdirs:
-            numeric_subdirs.sort()
-            args.data_dir += "/" + numeric_subdirs[-1]
+    if numeric_subdirs:
+        numeric_subdirs.sort()
+        args.data_dir = args.base_data_dir + "/" + numeric_subdirs[-1]
+    else:
+        args.data_dir = args.base_data_dir        
 
 
     # process html
@@ -425,8 +431,9 @@ def setup_argparser():
 
     # Feedback to the user
     print("\nSELECTED OPTIONS:")
+    print("*  base data directory  = ", args.base_data_dir)
     print("*  input data directory = ", args.data_dir)
-    feedback_arg(args.numeric_subdirs, "using numeric subdirectories.")
+    feedback_arg(args.use_numeric_subdirs, "using numeric subdirectories.")
     feedback_arg(args.allow_high_vals, "allowing high IAM values.")
     feedback_arg(args.sort, "pre-sorting data")
     feedback_arg(args.plot, "plotting")
