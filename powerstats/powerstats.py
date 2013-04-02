@@ -382,6 +382,8 @@ def setup_argparser():
 
     if args.base_data_dir:
         args.base_data_dir = os.path.realpath(args.base_data_dir)
+        if not os.path.exists(args.base_data_dir):
+            sys.exit("\nERROR: " + args.base_data_dir + " does not exist.")
     else:
         sys.exit("\nERROR: Please specify a data directory either using the --data-dir \n"
                  "       command line option or using the $DATA_DIR environment variable.\n")
@@ -391,7 +393,7 @@ def setup_argparser():
     # process numeric_subdirs
     # find the highest number subdirectory
     if args.numeric_subdirs:
-        existing_subdirs = os.walk(args.data_dir).next()[1]
+        existing_subdirs = os.walk(args.base_data_dir).next()[1]
         
         # Remove any subdirs which contain alphabetic characters
         numeric_subdirs = [subdir for subdir in existing_subdirs 
