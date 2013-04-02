@@ -58,20 +58,19 @@ class Channel(object):
 
     data_to_plot = False
     
-    def __init__(self, chan_num=None):
+    def __init__(self, chan_num=None, label=None):
         self._dt = None # delta time.
         self._proportion_missed_cache = None
         self._kwh_cache = None
         self._cache = {}
+        self.chan_num = chan_num
+        self.label = label
         
-        if chan_num:
-            self.chan_num = chan_num
-            self.label = Channel.labels[chan_num] # TODO add error handling if no label
+        if self.label:
             self.is_aggregate_chan = True if self.label in ["mains", "aggregate", "agg"] \
                                           else False
-            self._load()
         
-    def _load(self, filename=None, data_type=None):
+    def load(self, filename, data_type=None):
         """
         Args:
             filename (str): (optional) filename with full path
@@ -79,11 +78,7 @@ class Channel(object):
                 - "apparent_power"
                 - "real_power"
         """
-        if filename:
-            self.data_filename = filename
-        else:
-            filename = "channel_{:d}.dat".format(self.chan_num)
-            self.data_filename = Channel.args.data_dir + "/" + filename
+        self.data_filename = filename
             
         print("Loading ", filename, "... ", end="", sep="")        
 
@@ -494,12 +489,12 @@ def load_high_freq_mains(high_freq_mains_dir, start_timestamp, end_timestamp):
     real_power = Channel()
     real_power.label = "real power"
     real_power.is_aggregate_chan = True
-    real_power._load(filename=data_filename, data_type="real_power")
+    real_power.load(filename=data_filename, data_type="real_power")
     
     apparent_power = Channel()
     apparent_power.label = "apparent power"
     apparent_power.is_aggregate_chan = True
-    apparent_power._load(filename=data_filename, data_type="apparent_power")
+    apparent_power.load(filename=data_filename, data_type="apparent_power")
         
     return real_power, apparent_power
     
@@ -516,12 +511,13 @@ def main():
         labels = load_labels(args)
     except IOError, e:
         sys.exit(e)
-    Channel.labels = labels
     
     # Load channel data
     channels = {}
-    for chan_num in labels.keys():
-        channels[chan_num] = Channel(chan_num)
+    for chan_num, label in labels.iteritems():
+        channels[chan_num] = Channel(chan_num, label)
+        filename = args.data_dir + "/channel_{:d}.dat".format(chan_num)        
+        channels[chan_num].load(filename)
         if chan_num > max_chan_num:
             max_chan_num = chan_num
                 
