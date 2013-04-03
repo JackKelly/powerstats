@@ -52,7 +52,7 @@ class Channel(object):
         try:
             with open(self.data_filename) as data_file:
                 if self._cache:
-                    print("seeking to", self._cache['filesize'], end="... ")
+                    print(self._cache['filesize'], end=", ")
                     data_file.seek(self._cache['filesize'])
                 lines = data_file.readlines()
         except IOError:
@@ -60,8 +60,7 @@ class Channel(object):
             print("doesn't exist. Skipping.")
             return
                 
-        print("read", len(lines), "lines... ")
-        print("     ", end="")
+        print(len(lines), end=", ")
         self.data = np.zeros(len(lines), 
                              dtype=[('datetime', datetime.datetime),
                                     ('watts', float)])
@@ -90,7 +89,7 @@ class Channel(object):
                              watts)
             i += 1
                 
-        print(i, "lines processed... ", end="")
+        print(i, end=", ")
                 
         # Resize self.data if we didn't take every line
         if not i:
@@ -509,8 +508,6 @@ def main():
 
     data_available = False
     
-    last_chan_num = 0
-    
     # Load labels.dat
     try:
         labels = load_labels(args)
@@ -518,6 +515,7 @@ def main():
         sys.exit(e)
     
     # Load channel data
+    print("File name, seek position (if using cache), lines read, lines processed\n")
     channels = []
     for chan_num, label in labels.iteritems():
         channels.append(Channel(chan_num, label))
@@ -530,9 +528,6 @@ def main():
         filename = args.data_dir + "/channel_{:d}.dat".format(chan_num)        
         channels[-1].load(filename, start=args.start, end=args.end,
                           use_cache=args.use_cache, sort=args.sort)
-
-        if chan_num > last_chan_num:
-            last_chan_num = chan_num
                 
     print("")
 
@@ -575,8 +570,8 @@ def main():
                                                           new_data_table.last_datetime)
         
         if real_power is not None:
-            real_power.chan_num = last_chan_num + 1
-            apparent_power.chan_num = last_chan_num + 2
+            real_power.chan_num = channels[-1].chan_num + 1
+            apparent_power.chan_num = channels[-1].chan_num + 2
             
             new_data_table = real_power.add_new_data_to_table(new_data_table)
             new_data_table = apparent_power.add_new_data_to_table(new_data_table)
@@ -585,19 +580,15 @@ def main():
                 apparent_power.plot_new_data(pwr_axes)
             
             channels.append(real_power)
-            channels.append(apparent_power)
-            last_chan_num += 2    
+            channels.append(apparent_power) 
     
     # Output stats tables as HTML or to stdout
     if args.html_dir:
         html = "<!DOCTYPE html>\n<html>\n<body>"
-        html += "<h3>NEW DATA:</h3>\n"
-        html += new_data_table.html()
-        if args.use_cache and cache_table.data:
-            html += "<h3>OLD DATA:</h3>\n"
-            html += cache_table.html()
-            html += "<h3>TOTALS:</h3>\n"
-            html += totals_table.html()
+        html += "<h3>NEW DATA:</h3>\n" + new_data_table.html()
+        if args.use_cache and cache_table.data is not None:
+            html += "<h3>OLD DATA:</h3>\n" + cache_table.html()
+            html += "<h3>TOTALS:</h3>\n" + totals_table.html()
         if data_available:
             html += "<img src=\"fig.png\"/>"
         else:
@@ -610,7 +601,7 @@ def main():
     else:
         # output text tables
         print("NEW DATA:\n", new_data_table)
-        if args.use_cache and cache_table.data:
+        if args.use_cache and cache_table.data is not None:
             print("OLD DATA:\n", cache_table)
             print("TOTALS:\n", totals_table)        
         
@@ -619,7 +610,7 @@ def main():
         # Format axes
         hit_axes.autoscale_view()      
         hit_axes.set_xlim( pwr_axes.get_xlim() )
-        hit_axes.set_ylim([-last_chan_num, 0])
+        hit_axes.set_ylim([-channels[-1].chan_num, 0])
         date_formatter = matplotlib.dates.DateFormatter("%d/%m\n%H:%M")
         hit_axes.xaxis.set_major_formatter( date_formatter )     
         pwr_axes.xaxis.set_major_formatter( date_formatter )     
