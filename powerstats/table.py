@@ -100,7 +100,7 @@ class Table:
         if self.first_datetime is None:
             return
         
-        time_details = Table(col_width = [9,20])
+        time_details = Table(col_width = [9,30])
         time_details.data_row(["Start", self.first_datetime])
         time_details.data_row(["End", self.last_datetime])
         time_details.data_row(["Duration", 

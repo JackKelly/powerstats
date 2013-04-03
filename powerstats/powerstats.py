@@ -14,6 +14,8 @@ import sys
 import pickle
 import copy
 import time
+import pytz
+import ConfigParser
 from table import Table
 
 MAX_PERIOD = 300 # seconds
@@ -31,11 +33,13 @@ class Channel(object):
         self.chan_num = chan_num
         self.label = label
 
-    def load(self, filename, data_type=None, start=None, end=None,
+    def load(self, filename, input_tz, data_type=None, start=None, end=None,
              use_cache=False, sort=False):
         """
         Args:
             filename (str): (optional) filename with full path
+            input_tz (pytz.timezone)  
+            
             data_type (str): (optional) one of the following:
                 - "apparent_power"
                 - "real_power"
@@ -43,7 +47,6 @@ class Channel(object):
                 before this time (no timezone conversion done)
             end (int of float): UNIX timestamp. Ignore all data recorded
                 after this time (no timezone conversion done)
-                
         """
         self.data_filename = filename
         print("Loading ", self.data_filename, "... ", end="", sep="")             
@@ -65,8 +68,6 @@ class Channel(object):
                              dtype=[('datetime', datetime.datetime),
                                     ('watts', float)])
         
-        timestamps = np.zeros(len(lines))
-        
         if data_type is None or data_type == "real_power":
             power_column = 1
         elif data_type == "apparent_power":
@@ -75,18 +76,18 @@ class Channel(object):
         i = 0    
         for line in lines:
             line = line.split()
-            timestamps[i] = float(line[0])
+            timestamp = float(line[0])
             
-            if start and timestamps[i] < start:
+            if start and timestamp < start:
                 continue
-            if end and timestamps[i] > end:
-                print("timestamp", timestamps[i], "is after end =", end)
+            if end and timestamp > end:
+                print("timestamp", timestamp, "is after end =", end)
                 break
             
             watts = float(line[power_column])
+            date_time = input_tz.localize(datetime.datetime.fromtimestamp(timestamp))
                     
-            self.data[i] = (datetime.datetime.utcfromtimestamp(timestamps[i]),
-                             watts)
+            self.data[i] = (date_time, watts)
             i += 1
                 
         print(i, end=", ")
@@ -98,17 +99,18 @@ class Channel(object):
             return
         elif i != len(lines):
             self.data = np.resize(self.data, i)
-            timestamps = np.resize(timestamps, i)
 
         # Calculate delta time vector
-        self._dt = timestamps[1:] - timestamps[:-1]
+        timedeltas = self.data['datetime'][1:] - self.data['datetime'][:-1]
+        self._dt = [timedelta.seconds for timedelta in timedeltas]
+        self._dt = np.array(self._dt)
         
         if sort:
             self._is_sorted = self._sort()
                     
         print("Done.")
 
-    def load_cache(self, cache_filename):
+    def load_cache(self, cache_filename, input_tz):
         # Try loading the pickled cache file
         self.cache_filename = cache_filename
         try:
@@ -120,19 +122,17 @@ class Channel(object):
             pkl_file.close()
             
             # Backwards compatibility for when _cache stored float timestamp
-            # not a datetime object:
-            if self._cache.get('first_datetime') is None:
-                self._cache['first_datetime'] = datetime.datetime.utcfromtimestamp(
-                                                 self._cache['first_timestamp'])
-            if self._cache.get('last_datetime') is None:
-                self._cache['last_datetime'] = datetime.datetime.utcfromtimestamp(
-                                                 self._cache['last_timestamp'])
+            # not a datetime object:                    
+            for s in ['first', 'last']:
+                if self._cache.get(s + '_datetime') is None:
+                    self._cache[s + '_datetime'] = datetime.datetime.fromtimestamp(
+                                                     self._cache[s + '_timestamp'])
+                    self._cache[s + '_datetime'] = input_tz.localize(self._cache[s + '_datetime'])
 
     def add_cache_to_table(self, table):
         if not self._cache:
             return table
-        
-        # TODO:
+
         table.update_first_datetime(self._cache['first_datetime'])
         table.update_last_datetime(self._cache['last_datetime'])
         
@@ -339,6 +339,16 @@ def setup_argparser():
                         help='Cache data for this timeperiod, starting from '
                         'end of last cached period.')
 
+    parser.add_argument('--input-timezone', dest='input_timezone', 
+                        default=None,
+                        help='Timezone of input data.'
+                             ' e.g. \'UTC\' or \'London\\Europe\'. This option'
+                             ' overrides the timezone specified in the metadata.dat'
+                             ' file, if such a file exists.  If no'
+                             ' value is provided then the input timezone will'
+                             ' be taken from the data-dir/metadata.dat file.'
+                             ' If no such file exists then the default is UTC.')
+
     args = parser.parse_args()
 
     # process data dir
@@ -371,6 +381,16 @@ def setup_argparser():
     else:
         args.data_dir = args.base_data_dir        
 
+    # process timezone
+    if args.input_timezone is None:
+        # look for metadata.dat file
+        metadata_filename = args.data_dir + "/metadata.dat" 
+        if os.path.exists(metadata_filename):
+            metadata_parser = ConfigParser.RawConfigParser()
+            metadata_parser.read(metadata_filename)
+            args.input_timezone = metadata_parser.get("datetime", "timezone")
+        else:
+            args.input_timezone = 'UTC'
 
     # process html
     if args.html:
@@ -395,6 +415,7 @@ def setup_argparser():
     print("\nSELECTED OPTIONS:")
     print("*  base data directory  = ", args.base_data_dir)
     print("*  input data directory = ", args.data_dir)
+    print("*  input data timezone  = ", args.input_timezone)
     feedback_arg(args.use_numeric_subdirs, "using numeric subdirectories.")
     feedback_arg(args.sort, "pre-sorting data")
     feedback_arg(args.plot, "plotting")
@@ -425,14 +446,14 @@ def feedback_arg(arg, text, optional_text=""):
     print("*", "" if arg else " not", text, optional_text if arg else "")
 
 
-def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime):
+def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime, 
+                         input_tz):
+    
     if start_datetime is None or end_datetime is None:
         return None, None
     
     print("Loading high frequency mains data...")
     dir_listing = os.listdir(high_freq_mains_dir)
-    
-    start_timestamp = time.mktime(start_datetime.timetuple())
     
     # Find all .dat files
     # 'f' is short for 'file'
@@ -440,7 +461,7 @@ def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime):
     
     # find set of dat files which start before end_timestamp
     dat_files = [s for s in dat_files # 's' is short for 'string'
-                 if datetime.datetime.strptime(s, 'mains-%Y_%m_%d_%H_%M_%S.dat') 
+                 if input_tz.localize(datetime.datetime.strptime(s, 'mains-%Y_%m_%d_%H_%M_%S.dat')) 
                  < end_datetime]
     
     if not dat_files:
@@ -455,14 +476,18 @@ def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime):
     dat_files.sort()
     data_filename = high_freq_mains_dir + "/" + dat_files[-1]
 
+    start_timestamp = time.mktime(start_datetime.timetuple())
+
     real_power = Channel()
     real_power.label = "real power"
-    real_power.load(filename=data_filename, data_type="real_power", 
+    real_power.load(filename=data_filename, input_tz=input_tz, 
+                    data_type="real_power", 
                     start=start_timestamp)
     
     apparent_power = Channel()
     apparent_power.label = "apparent power"
-    apparent_power.load(filename=data_filename, data_type="apparent_power",
+    apparent_power.load(filename=data_filename, input_tz=input_tz,
+                        data_type="apparent_power",
                         start=start_timestamp)
         
     return real_power, apparent_power
@@ -508,6 +533,8 @@ def main():
 
     data_available = False
     
+    input_tz = pytz.timezone(args.input_timezone)
+    
     # Load labels.dat
     try:
         labels = load_labels(args)
@@ -523,10 +550,10 @@ def main():
         if args.use_cache:
             cache_filename = (args.data_dir +
                               "/channel_{:d}_cache.pkl".format(chan_num))
-            channels[-1].load_cache(cache_filename)
+            channels[-1].load_cache(cache_filename, input_tz)
         
         filename = args.data_dir + "/channel_{:d}.dat".format(chan_num)        
-        channels[-1].load(filename, start=args.start, end=args.end,
+        channels[-1].load(filename, input_tz, start=args.start, end=args.end,
                           use_cache=args.use_cache, sort=args.sort)
                 
     print("")
@@ -567,7 +594,8 @@ def main():
     if os.path.isdir(HIGH_FREQ_MAINS_DIR):
         real_power, apparent_power = load_high_freq_mains(HIGH_FREQ_MAINS_DIR,
                                                           new_data_table.first_datetime,
-                                                          new_data_table.last_datetime)
+                                                          new_data_table.last_datetime,
+                                                          input_tz)
         
         if real_power is not None:
             real_power.chan_num = channels[-1].chan_num + 1
