@@ -342,12 +342,12 @@ def setup_argparser():
     parser.add_argument('--input-timezone', dest='input_timezone', 
                         default=None,
                         help='Timezone of input data.'
-                             ' e.g. \'UTC\' or \'London\\Europe\'. This option'
+                             ' e.g. \'UTC\' or \'Europe/London\'. This option'
                              ' overrides the timezone specified in the metadata.dat'
                              ' file, if such a file exists.  If no'
                              ' value is provided then the input timezone will'
                              ' be taken from the data-dir/metadata.dat file.'
-                             ' If no such file exists then the default is UTC.')
+                             ' If no such file exists then it defaults to Europe/London.')
 
     args = parser.parse_args()
 
@@ -390,7 +390,7 @@ def setup_argparser():
             metadata_parser.read(metadata_filename)
             args.input_timezone = metadata_parser.get("datetime", "timezone")
         else:
-            args.input_timezone = 'UTC'
+            args.input_timezone = 'Europe/London' # default
 
     # process html
     if args.html:
