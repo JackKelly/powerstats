@@ -518,18 +518,18 @@ def main():
         sys.exit(e)
     
     # Load channel data
-    channels = {}
+    channels = []
     for chan_num, label in labels.iteritems():
-        channels[chan_num] = Channel(chan_num, label)
+        channels.append(Channel(chan_num, label))
         
         if args.use_cache:
             cache_filename = (args.data_dir +
                               "/channel_{:d}_cache.pkl".format(chan_num))
-            channels[chan_num].load_cache(cache_filename)
+            channels[-1].load_cache(cache_filename)
         
         filename = args.data_dir + "/channel_{:d}.dat".format(chan_num)        
-        channels[chan_num].load(filename, start=args.start, end=args.end,
-                                use_cache=args.use_cache, sort=args.sort)
+        channels[-1].load(filename, start=args.start, end=args.end,
+                          use_cache=args.use_cache, sort=args.sort)
 
         if chan_num > last_chan_num:
             last_chan_num = chan_num
@@ -551,7 +551,7 @@ def main():
         hit_axes.xaxis.axis_date()  
     
     # Produce data for stats tables, update cache and plot_new_data channel data
-    for dummy, chan in channels.iteritems():
+    for chan in channels:
         
         new_data_table = chan.add_new_data_to_table(new_data_table)
         
@@ -584,8 +584,8 @@ def main():
                 real_power.plot_new_data(pwr_axes)
                 apparent_power.plot_new_data(pwr_axes)
             
-            channels[real_power.chan_num] = real_power
-            channels[apparent_power.chan_num] = apparent_power
+            channels.append(real_power)
+            channels.append(apparent_power)
             last_chan_num += 2    
     
     # Output stats tables as HTML or to stdout
