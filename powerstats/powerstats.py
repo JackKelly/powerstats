@@ -297,13 +297,15 @@ def setup_argparser():
                                      epilog='example: ./powerstats.py '
                                             ' --data-dir ~/data')
        
-    parser.add_argument('--data-dir',
-                        dest="base_data_dir",
-                        default=None,
+    parser.add_argument('--data-dir', dest='base_data_dir', default=None,
                         help='directory from which to retrieve data.')
     
-    parser.add_argument('--numeric-subdirs',
-                        dest='use_numeric_subdirs',
+    parser.add_argument('--high-freq-data-dir', dest='high_freq_data_dir',
+                        default=None, help='Directory for the .dat files'
+                        ' recording real and apparent power, for example'
+                        ' recorded using snd_card_power_meter.')
+    
+    parser.add_argument('--numeric-subdirs', dest='use_numeric_subdirs',
                         action='store_true',
                         help='Data is stored within numerically named subdirs '
                              'in base data dir.\n'
@@ -395,6 +397,10 @@ def setup_argparser():
     # process html
     if args.html:
         args.html_dir = args.data_dir + "/html"
+        
+    # high freq data dir
+    if args.high_freq_data_dir is None:
+        args.high_freq_data_dir = args.base_data_dir + "/high-freq-mains"
 
     # process html_dir
     if args.html_dir:
@@ -415,6 +421,7 @@ def setup_argparser():
     print("\nSELECTED OPTIONS:")
     print("*  base data directory  = ", args.base_data_dir)
     print("*  input data directory = ", args.data_dir)
+    print("*  high freq data dir   = ", args.high_freq_data_dir)
     print("*  input data timezone  = ", args.input_timezone)
     feedback_arg(args.use_numeric_subdirs, "using numeric subdirectories.")
     feedback_arg(args.sort, "pre-sorting data")
@@ -590,9 +597,9 @@ def main():
             
     
     # Load sound card power meter data (if available)
-    HIGH_FREQ_MAINS_DIR = args.base_data_dir + "/high-freq-mains" 
-    if os.path.isdir(HIGH_FREQ_MAINS_DIR):
-        real_power, apparent_power = load_high_freq_mains(HIGH_FREQ_MAINS_DIR,
+    
+    if os.path.isdir(args.high_freq_data_dir):
+        real_power, apparent_power = load_high_freq_mains(args.high_freq_data_dir,
                                                           new_data_table.first_datetime,
                                                           new_data_table.last_datetime,
                                                           input_tz)
