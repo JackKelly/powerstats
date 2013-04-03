@@ -70,17 +70,22 @@ class Channel(object):
             self.is_aggregate_chan = True if self.label in ["mains", "aggregate", "agg"] \
                                           else False
         
-    def load(self, filename, data_type=None):
+    def load(self, filename, data_type=None, start=None, end=None):
         """
         Args:
             filename (str): (optional) filename with full path
             data_type (str): (optional) one of the following:
                 - "apparent_power"
                 - "real_power"
+            start (int or float): UNIX timestamp. Ignore all data recorded
+                before this time (no timezone conversion done)
+            end (int of float): UNIX timestamp. Ignore all data recorded
+                after this time (no timezone conversion done)
+                
         """
         self.data_filename = filename
             
-        print("Loading ", filename, "... ", end="", sep="")        
+        print("Loading ", self.data_filename, "... ", end="", sep="")        
 
         # Load cache if necessary (don't use cache for high freq data)
         if Channel.args.cache and data_type is None:
@@ -101,7 +106,7 @@ class Channel(object):
         print("read", len(lines), "lines... ")
         print("     ", end="")
         self.data = np.zeros(len(lines), 
-                             dtype=[('timestamp', np.uint32), ('watts', float)])
+                             dtype=[('timestamp', float), ('watts', float)])
         
         if data_type is None or data_type == "real_power":
             power_column = 1
@@ -111,20 +116,18 @@ class Channel(object):
         i = 0    
         for line in lines:
             line = line.split()
-            timestamp = int(round(float(line[0])))
-            if Channel.args.start and timestamp < Channel.args.start:
-                continue
-            if Channel.args.end and timestamp > Channel.args.end:
-                print("timestamp", timestamp, "is after Channel.args.end=", Channel.args.end, sep=" ")
-                break
-            watts = float(line[power_column])
+            timestamp = float(line[0])
             
-            if (self.args.allow_high_vals
-                or self.is_aggregate_chan
-                or watts < 4000):
+            if start and timestamp < start:
+                continue
+            if end and timestamp > end:
+                print("timestamp", timestamp, "is after end =", end)
+                break
+            
+            watts = float(line[power_column])
                     
-                self.data[i] = (timestamp, watts) 
-                i += 1
+            self.data[i] = (timestamp, watts) 
+            i += 1
                 
         print(i, "lines processed... ", end="")
                 
@@ -348,9 +351,6 @@ def setup_argparser():
                         ,default="labels.dat"
                         ,help="filename (without path) for labels data (default:'labels.dat').")
     
-    parser.add_argument('--no-high-values', dest='allow_high_vals', action='store_false'
-                        ,help='Remove values >4000W for IAMs.')
-    
     parser.add_argument('--sort', action='store_true'
                         ,help='Pre-sort by date. Vital for MIT data.')
     
@@ -429,7 +429,6 @@ def setup_argparser():
     print("*  base data directory  = ", args.base_data_dir)
     print("*  input data directory = ", args.data_dir)
     feedback_arg(args.use_numeric_subdirs, "using numeric subdirectories.")
-    feedback_arg(args.allow_high_vals, "allowing high IAM values.")
     feedback_arg(args.sort, "pre-sorting data")
     feedback_arg(args.plot, "plotting")
     feedback_arg(args.html_dir, "outputting HTML", "to file://{}/index.html".format(args.html_dir))
