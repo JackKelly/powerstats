@@ -22,8 +22,8 @@ class Table:
         self.sep_col_widths = isinstance(self.col_width, list)            
         self.data_format = data_format
         self.col_sep = col_sep
-        self.first_timestamp = None
-        self.last_timestamp = None
+        self.first_datetime = None
+        self.last_datetime = None
         
         if (self.sep_col_widths and self.data_format and
             len(self.data_format) != len(self.col_width)):
@@ -37,19 +37,19 @@ class Table:
     def data_row(self, d):
         self.data.append(d)
         
-    def update_first_timestamp(self, t):
-        if self.first_timestamp:
-            if t < self.first_timestamp:
-                self.first_timestamp = t
+    def update_first_datetime(self, dt):
+        if self.first_datetime:
+            if dt < self.first_datetime:
+                self.first_datetime = dt
         else:
-            self.first_timestamp = t
+            self.first_datetime = dt
 
-    def update_last_timestamp(self, t):
-        if self.last_timestamp:
-            if t > self.last_timestamp:
-                self.last_timestamp = t
+    def update_last_datetime(self, dt):
+        if self.last_datetime:
+            if dt > self.last_datetime:
+                self.last_datetime = dt
         else:
-            self.last_timestamp = t
+            self.last_datetime = dt
 
     def html(self):
         if not self.data:
@@ -97,15 +97,14 @@ class Table:
         return s
 
     def _time_details(self):
-        if not self.first_timestamp:
+        if self.first_datetime is None:
             return
         
         time_details = Table(col_width = [9,20])
-        start_dt = datetime.datetime.fromtimestamp(self.first_timestamp)
-        end_dt   = datetime.datetime.fromtimestamp(self.last_timestamp)
-        time_details.data_row(["Start", start_dt])
-        time_details.data_row(["End", end_dt])
-        time_details.data_row(["Duration", end_dt - start_dt])
+        time_details.data_row(["Start", self.first_datetime])
+        time_details.data_row(["End", self.last_datetime])
+        time_details.data_row(["Duration", 
+                               self.last_datetime - self.first_datetime])
         return time_details
     
     def _list_to_plain_text_row(self, lst, header=False):

@@ -20,57 +20,19 @@ MAX_PERIOD = 300 # seconds
 SAMPLE_PERIOD = 6 # seconds        
 
 class Channel(object):
-    labels = {}
-    args = None
     axes = None
-    
-    NAME_COL_WIDTH = 20
-    
-    table = Table(col_width=[5,NAME_COL_WIDTH,6,3] + [6,6] + [6,6,6,6] + [10, 6],
-                  data_format=["{:d}","{:s}","{:d}","{}","{:.1f}","{:.1f}","{}","{:.1f}","{}","{:.1f}","{:.1%}", "{:.1f}"],
-                  col_sep=1)
-    
-    # Create two-row header
-    table.header_row([(4, ""), (2, "POWER (W)", "-"), (4, "SAMPLE PERIOD (s)", "-"), (2, "")])
-    table.header_row(["#", 
-                      "name", 
-                      "count", 
-                      "s",
-                      "min", "max",
-                      "min", "mean", "max", "stdev",
-                      "% missed",
-                      "kwh"
-                      ])
-
-    cache_table = Table(col_width=[5,NAME_COL_WIDTH,6] + [6,6] + [6,6,6] + [10, 6],
-                        data_format=["{:d}","{:s}","{:d}","{:.1f}","{:.1f}","{}","{:.1f}","{}","{:.1%}", "{:.1f}"])
-    cache_table.header_row([(3, ""), (2, "POWER (W)", "-"), (3, "SAMPLE PERIOD (s)", "-"), (2, "")])
-    cache_table.header_row(["#", 
-                      "name", 
-                      "count", 
-                      "min", "max",
-                      "min", "mean", "max",
-                      "% missed",
-                      "kwh"
-                      ])
-    
-    totals_table = copy.deepcopy(cache_table)
-
-    data_to_plot = False
     
     def __init__(self, chan_num=None, label=None):
         self._dt = None # delta time.
         self._proportion_missed_cache = None
         self._kwh_cache = None
         self._cache = {}
+        self._is_sorted = None
         self.chan_num = chan_num
         self.label = label
-        
-        if self.label:
-            self.is_aggregate_chan = True if self.label in ["mains", "aggregate", "agg"] \
-                                          else False
-        
-    def load(self, filename, data_type=None, start=None, end=None):
+
+    def load(self, filename, data_type=None, start=None, end=None,
+             use_cache=False, sort=False):
         """
         Args:
             filename (str): (optional) filename with full path
@@ -84,12 +46,7 @@ class Channel(object):
                 
         """
         self.data_filename = filename
-            
-        print("Loading ", self.data_filename, "... ", end="", sep="")        
-
-        # Load cache if necessary (don't use cache for high freq data)
-        if Channel.args.cache and data_type is None:
-            self._load_cache()        
+        print("Loading ", self.data_filename, "... ", end="", sep="")             
         
         # Load data file
         try:
@@ -106,7 +63,10 @@ class Channel(object):
         print("read", len(lines), "lines... ")
         print("     ", end="")
         self.data = np.zeros(len(lines), 
-                             dtype=[('timestamp', float), ('watts', float)])
+                             dtype=[('datetime', datetime.datetime),
+                                    ('watts', float)])
+        
+        timestamps = np.zeros(len(lines))
         
         if data_type is None or data_type == "real_power":
             power_column = 1
@@ -116,17 +76,18 @@ class Channel(object):
         i = 0    
         for line in lines:
             line = line.split()
-            timestamp = float(line[0])
+            timestamps[i] = float(line[0])
             
-            if start and timestamp < start:
+            if start and timestamps[i] < start:
                 continue
-            if end and timestamp > end:
-                print("timestamp", timestamp, "is after end =", end)
+            if end and timestamps[i] > end:
+                print("timestamp", timestamps[i], "is after end =", end)
                 break
             
             watts = float(line[power_column])
                     
-            self.data[i] = (timestamp, watts) 
+            self.data[i] = (datetime.datetime.utcfromtimestamp(timestamps[i]),
+                             watts)
             i += 1
                 
         print(i, "lines processed... ", end="")
@@ -138,31 +99,43 @@ class Channel(object):
             return
         elif i != len(lines):
             self.data = np.resize(self.data, i)
+            timestamps = np.resize(timestamps, i)
 
         # Calculate delta time vector
-        self._dt = self.data['timestamp'][1:] - self.data['timestamp'][:-1]
+        self._dt = timestamps[1:] - timestamps[:-1]
+        
+        if sort:
+            self._is_sorted = self._sort()
                     
         print("Done.")
 
-    def _load_cache(self):
+    def load_cache(self, cache_filename):
         # Try loading the pickled cache file
-        self.pkl_filename = Channel.args.data_dir + \
-                       "/channel_{:d}_cache.pkl".format(self.chan_num)
-
+        self.cache_filename = cache_filename
         try:
-            pkl_file = open(self.pkl_filename, "rb")
+            pkl_file = open(self.cache_filename, "rb")
         except:
             self._cache = {}
         else:
             self._cache = pickle.load(pkl_file)
             pkl_file.close()
+            
+            # Backwards compatibility for when _cache stored float timestamp
+            # not a datetime object:
+            if self._cache.get('first_datetime') is None:
+                self._cache['first_datetime'] = datetime.datetime.utcfromtimestamp(
+                                                 self._cache['first_timestamp'])
+            if self._cache.get('last_datetime') is None:
+                self._cache['last_datetime'] = datetime.datetime.utcfromtimestamp(
+                                                 self._cache['last_timestamp'])
 
     def add_cache_to_table(self, table):
         if not self._cache:
-            return
+            return table
         
-        table.update_first_timestamp(self._cache['first_timestamp'])
-        table.update_last_timestamp(self._cache['last_timestamp'])
+        # TODO:
+        table.update_first_datetime(self._cache['first_datetime'])
+        table.update_last_datetime(self._cache['last_datetime'])
         
         table.data_row([
           self.chan_num, self.label,
@@ -172,23 +145,32 @@ class Channel(object):
           self._cache['missed'],
           self._cache['kwh']
           ])
+        
+        return table
 
     def update_and_save_cache(self):
-        if not Channel.args.cache or self.data is None:
+        if self.data is None:
             return
         
         if self._cache:
-            self._cache['watts_min'] = min(self._cache['watts_min'], self.data['watts'].min())
-            self._cache['watts_max'] = max(self._cache['watts_max'], self.data['watts'].max())
+            self._cache['watts_min'] = min(self._cache['watts_min'], 
+                                           self.data['watts'].min())
+            self._cache['watts_max'] = max(self._cache['watts_max'], 
+                                           self.data['watts'].max())
             self._cache['dt_min'] = min(self._cache['dt_min'], self._dt.min())
             self._cache['dt_max'] = max(self._cache['dt_max'], self._dt.max())
             total_size = self._cache['count'] + self.data.size 
-            self._cache['dt_mean'] = ((self._cache['dt_mean']*(self._cache['count']-1)) + self._dt.sum()) / (total_size-2)
-            self._cache['missed'] = ((self._cache['missed']*self._cache['count']) + (self._proportion_missed()*self.data.size)) / total_size 
+            self._cache['dt_mean'] = ((self._cache['dt_mean'] *
+                                      (self._cache['count']-1)) + 
+                                      self._dt.sum()) / (total_size-2)
+            self._cache['missed'] = ((self._cache['missed'] *
+                                      self._cache['count']) + 
+                                     (self._proportion_missed() * 
+                                      self.data.size)) / total_size 
             self._cache['count'] = total_size
             self._cache['kwh'] += self._kwh()
         else:
-            self._cache['first_timestamp'] = self.data['timestamp'][0]
+            self._cache['first_datetime'] = self.data['datetime'][0]
             self._cache['watts_min'] = self.data['watts'].min()
             self._cache['watts_max'] = self.data['watts'].max()
             self._cache['dt_min'] = self._dt.min()
@@ -198,45 +180,41 @@ class Channel(object):
             self._cache['count'] = self.data.size
             self._cache['kwh'] = self._kwh()
             
-        self._cache['last_timestamp'] = self.data['timestamp'][-1]
+        self._cache['last_datetime'] = self.data['datetime'][-1]
         self._cache['filesize'] = os.path.getsize(self.data_filename)
             
-        with open(self.pkl_filename, "wb") as output:
-            # "with" ensures we close the file, even if an exception occurs.
-            pickle.dump(self._cache, output)            
+        with open(self.cache_filename, "wb") as output:
+            pickle.dump(self._cache, output) 
 
     def _kwh(self):
         if self.data is None:
             return 0
 
-        if not self._kwh_cache:
+        if self._kwh_cache is None:
             dt_limited = np.where(self._dt>MAX_PERIOD, SAMPLE_PERIOD, self._dt)
-            watt_seconds = (dt_limited * self.data['watts'][:-1]).sum()           
+            watt_seconds = (dt_limited * self.data['watts'][:-1]).sum()
             self._kwh_cache = watt_seconds / 3600000
             
         return self._kwh_cache
         
-    def add_to_table(self):
+    def add_new_data_to_table(self, table):
         if self._dt is None or self._dt.size < 2:
-            Channel.table.data_row([self.chan_num, self.label,
+            table.data_row([self.chan_num, self.label,
                                      0,'-',0,0,0,0,0,0,1,0])
-            return
+            return table
+
+        table.update_first_datetime(self.data['datetime'][0])
+        table.update_last_datetime(self.data['datetime'][-1])
+
+        is_sorted = "-" if self._is_sorted is None else self._is_sorted
         
-        if Channel.args.sort:
-            is_sorted = self._sort()
-        else:
-            is_sorted = "-"        
+        table.data_row([self.chan_num, self.label, self.data.size, is_sorted,
+                        self.data['watts'].min(), self.data['watts'].max(),
+                        self._dt.min(), self._dt.mean(), self._dt.max(),
+                        self._dt.std(), self._proportion_missed(),
+                        self._kwh()])
 
-        Channel.table.update_first_timestamp(self.data['timestamp'][0])
-        Channel.table.update_last_timestamp(self.data['timestamp'][-1])
-
-        Channel.table.data_row([
-                       self.chan_num, self.label, self.data.size, is_sorted,
-                       self.data['watts'].min(), self.data['watts'].max(),
-                       self._dt.min(), self._dt.mean(), self._dt.max(), self._dt.std(),
-                       self._proportion_missed(),
-                       self._kwh()])
-
+        return table
         
     def _proportion_missed(self):
         if not self._proportion_missed_cache:
@@ -250,56 +228,39 @@ class Channel(object):
         else sort rows in self.data by timecode and return false."""
        
         sorted_data = self.data.__copy__()
-        sorted_data.sort(order='timestamp')
+        sorted_data.sort(order='datetime')
         if (sorted_data == self.data).all():
             return True
         else:
             self.data = sorted_data
             return False
         
-    def plot(self):
+    def data_is_available(self):
         if self._dt is None or self.data is None:
-            return
+            return False
         else:
-            Channel.data_to_plot = True
+            return True
+        
+    def plot_new_data(self, axes):
+        if self.data is None:
+            return
         
         # Power consumption
-        x = np.empty(self.data.size, dtype="object")
-        for i in range(self.data.size):
-            x[i] = datetime.datetime.fromtimestamp(self.data["timestamp"][i])
-            
-        pwr_line, = Channel.pwr_axes.plot(x, self.data['watts'], label=
-                                          str(self.chan_num)+" "+self.label)
-                
-        # Plot missed samples
+        return axes.plot(self.data['datetime'], self.data['watts'],
+                         label=str(self.chan_num) + ' ' + self.label)
+    
+    def plot_missed_samples(self, axes, color):
+        if self._dt is None:
+            return
+        
         for i in (self._dt > 11).nonzero()[0]:
-            start = x[i]
-            end   = x[i+1]
+            start = self.data['datetime'][i]
+            end   = self.data['datetime'][i+1]
             rect = plt.Rectangle((start, -self.chan_num), # bottom left corner
                                  (end-start).total_seconds()/86400, # length
                                  1, # width
-                                 color=pwr_line.get_c())
-            Channel.hit_axes.add_patch(rect)
-        
-    @staticmethod
-    def output_text_tables():
-        print("NEW DATA:\n", Channel.table)
-        if Channel.args.cache and Channel.cache_table.data:
-            print("OLD DATA:\n", Channel.cache_table)
-            print("TOTALS:\n", Channel.totals_table)
-
-    @staticmethod
-    def output_html_tables():
-        html = "<h3>NEW DATA:</h3>\n"
-        html += Channel.table.html()
-        if Channel.args.cache and Channel.cache_table.data:
-            html += "<h3>OLD DATA:</h3>\n"
-            html += Channel.cache_table.html()
-            html += "<h3>TOTALS:</h3>\n"
-            html += Channel.totals_table.html()
-
-        return html
-
+                                 color=color)
+            axes.add_patch(rect)
 
 def load_labels(args):
     """
@@ -332,45 +293,52 @@ def convert_to_int(string, name):
 
 def setup_argparser():
     # Process command line _args
-    parser = argparse.ArgumentParser(description="Generate simple stats for "
-                                                 "electricity power data logs."
-                                    ,epilog="example: ./powerstats.py  --data-dir ~/data")
+    parser = argparse.ArgumentParser(description='Generate simple stats for '
+                                                 'electricity power data logs.',
+                                     epilog='example: ./powerstats.py '
+                                            ' --data-dir ~/data')
        
-    parser.add_argument('--data-dir'
-                        ,dest="base_data_dir"
-                        ,default=None
-                        ,help='directory from which to retrieve data.')
+    parser.add_argument('--data-dir',
+                        dest="base_data_dir",
+                        default=None,
+                        help='directory from which to retrieve data.')
     
-    parser.add_argument('--numeric-subdirs'
-                        ,dest='use_numeric_subdirs'
-                        ,action='store_true'
-                        ,help='Data is stored within numerically named subdirs in base data dir.\n'
-                              'Defaults to TRUE if data-dir is taken from $DATA_DIR env variable.')
+    parser.add_argument('--numeric-subdirs',
+                        dest='use_numeric_subdirs',
+                        action='store_true',
+                        help='Data is stored within numerically named subdirs '
+                             'in base data dir.\n'
+                             'Defaults to TRUE if data-dir is taken from'
+                             ' $DATA_DIR env variable.')
     
-    parser.add_argument('--labels-file'
-                        ,default="labels.dat"
-                        ,help="filename (without path) for labels data (default:'labels.dat').")
+    parser.add_argument('--labels-file',
+                        default='labels.dat',
+                        help='filename (without path) for labels data'
+                             ' (default:\'labels.dat\').')
     
-    parser.add_argument('--sort', action='store_true'
-                        ,help='Pre-sort by date. Vital for MIT data.')
+    parser.add_argument('--sort', action='store_true',
+                        help='Pre-sort by date. Vital for MIT data.')
     
-    parser.add_argument('--no-plot', dest='plot', action='store_false'
-                        ,help='Do not plot graph.')
+    parser.add_argument('--no-plot', dest='plot', action='store_false',
+                        help='Do not plot  graph.')
 
-    parser.add_argument('--html', action='store_true'
-                        ,help='Output HTML to data-dir/html/')
+    parser.add_argument('--html', action='store_true',
+                        help='Output HTML to data-dir/html/')
     
-    parser.add_argument('--html-dir', dest="html_dir"
-                        ,help='Output stats and graphs as HTML to this directory.')    
+    parser.add_argument('--html-dir', dest='html_dir',
+                        help='Output stats and graphs as HTML to this directory.')    
     
-    parser.add_argument('--start'
-                        ,help="Unix timestamp to start time period.")    
+    parser.add_argument('--start',
+                        help='Unix timestamp to start time period,'
+                             ' no TZ conversion done.') 
 
-    parser.add_argument('--end'
-                        ,help="Unix timestamp to end time period.")    
+    parser.add_argument('--end',
+                        help='Unix timestamp to end time period,'
+                             ' no TZ conversion done.')
 
-    parser.add_argument('--cache', action='store_true'
-                        ,help='Cache data for this timeperiod, starting from end of last cached period.')
+    parser.add_argument('--cache', action='store_true', dest='use_cache',
+                        help='Cache data for this timeperiod, starting from '
+                        'end of last cached period.')
 
     args = parser.parse_args()
 
@@ -432,7 +400,7 @@ def setup_argparser():
     feedback_arg(args.sort, "pre-sorting data")
     feedback_arg(args.plot, "plotting")
     feedback_arg(args.html_dir, "outputting HTML", "to file://{}/index.html".format(args.html_dir))
-    feedback_arg(args.cache, "caching data")
+    feedback_arg(args.use_cache, "caching data")
     print("*  window starting at {}".format(args.start) if args.start else "*  window starting at beginning of data")
     print("*  window ending at {}".format(args.end) if args.end else "*  window finishing at end of data")
     print("")
@@ -458,9 +426,14 @@ def feedback_arg(arg, text, optional_text=""):
     print("*", "" if arg else " not", text, optional_text if arg else "")
 
 
-def load_high_freq_mains(high_freq_mains_dir, start_timestamp, end_timestamp):
+def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime):
+    if start_datetime is None or end_datetime is None:
+        return None, None
+    
     print("Loading high frequency mains data...")
     dir_listing = os.listdir(high_freq_mains_dir)
+    
+    start_timestamp = time.mktime(start_datetime.timetuple())
     
     # Find all .dat files
     # 'f' is short for 'file'
@@ -468,12 +441,12 @@ def load_high_freq_mains(high_freq_mains_dir, start_timestamp, end_timestamp):
     
     # find set of dat files which start before end_timestamp
     dat_files = [s for s in dat_files # 's' is short for 'string'
-                 if time.mktime(time.strptime(s, 'mains-%Y_%m_%d_%H_%M_%S.dat')) 
-                 < end_timestamp]
+                 if datetime.datetime.strptime(s, 'mains-%Y_%m_%d_%H_%M_%S.dat') 
+                 < end_datetime]
     
     if not dat_files:
         print("No high frequency dat files found with start times before",
-              end_timestamp)
+              end_datetime)
         return None, None
     
     # open last dat file (a limitation of this code: there may be multiple dat 
@@ -482,18 +455,16 @@ def load_high_freq_mains(high_freq_mains_dir, start_timestamp, end_timestamp):
     # won't be an issue)
     dat_files.sort()
     data_filename = high_freq_mains_dir + "/" + dat_files[-1]
-    
-    Channel.args.start = start_timestamp
 
     real_power = Channel()
     real_power.label = "real power"
-    real_power.is_aggregate_chan = True
-    real_power.load(filename=data_filename, data_type="real_power")
+    real_power.load(filename=data_filename, data_type="real_power", 
+                    start=start_timestamp)
     
     apparent_power = Channel()
     apparent_power.label = "apparent power"
-    apparent_power.is_aggregate_chan = True
-    apparent_power.load(filename=data_filename, data_type="apparent_power")
+    apparent_power.load(filename=data_filename, data_type="apparent_power",
+                        start=start_timestamp)
         
     return real_power, apparent_power
     
@@ -501,9 +472,44 @@ def load_high_freq_mains(high_freq_mains_dir, start_timestamp, end_timestamp):
 def main():
     # Load command-line arguments
     args = setup_argparser()
-    Channel.args = args    
+
+    # Setup Tables for storing data
+    NAME_COL_WIDTH = 20
     
-    max_chan_num = 0
+    new_data_table = Table(col_width=[5,NAME_COL_WIDTH,6,3] + [6,6] + [6,6,6,6] + [10, 6],
+                  data_format=["{:d}","{:s}","{:d}","{}","{:.1f}","{:.1f}","{}","{:.1f}","{}","{:.1f}","{:.1%}", "{:.1f}"],
+                  col_sep=1)
+    
+    # Create two-row header
+    new_data_table.header_row([(4, ""), (2, "POWER (W)", "-"), (4, "SAMPLE PERIOD (s)", "-"), (2, "")])
+    new_data_table.header_row(["#", 
+                      "name", 
+                      "count", 
+                      "s",
+                      "min", "max",
+                      "min", "mean", "max", "stdev",
+                      "% missed",
+                      "kwh"
+                      ])
+
+    if args.use_cache:
+        cache_table = Table(col_width=[5,NAME_COL_WIDTH,6] + [6,6] + [6,6,6] + [10, 6],
+                            data_format=["{:d}","{:s}","{:d}","{:.1f}","{:.1f}","{}","{:.1f}","{}","{:.1%}", "{:.1f}"])
+        cache_table.header_row([(3, ""), (2, "POWER (W)", "-"), (3, "SAMPLE PERIOD (s)", "-"), (2, "")])
+        cache_table.header_row(["#", 
+                          "name", 
+                          "count", 
+                          "min", "max",
+                          "min", "mean", "max",
+                          "% missed",
+                          "kwh"
+                          ])
+        
+        totals_table = copy.deepcopy(cache_table)
+
+    data_available = False
+    
+    last_chan_num = 0
     
     # Load labels.dat
     try:
@@ -515,103 +521,127 @@ def main():
     channels = {}
     for chan_num, label in labels.iteritems():
         channels[chan_num] = Channel(chan_num, label)
+        
+        if args.use_cache:
+            cache_filename = (args.data_dir +
+                              "/channel_{:d}_cache.pkl".format(chan_num))
+            channels[chan_num].load_cache(cache_filename)
+        
         filename = args.data_dir + "/channel_{:d}.dat".format(chan_num)        
-        channels[chan_num].load(filename)
-        if chan_num > max_chan_num:
-            max_chan_num = chan_num
+        channels[chan_num].load(filename, start=args.start, end=args.end,
+                                use_cache=args.use_cache, sort=args.sort)
+
+        if chan_num > last_chan_num:
+            last_chan_num = chan_num
                 
     print("")
 
-    # Setup matplotlib figure (but don't plot anything yet)
+    # Setup matplotlib figure (but don't plot_new_data anything yet)
     if args.plot:
         fig = plt.figure(figsize=(14,10))
         gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
-        Channel.pwr_axes = plt.subplot(gs[0])
-        Channel.pwr_axes.set_title("Power consumption")
-        Channel.pwr_axes.set_xlabel("time")
-        Channel.pwr_axes.set_ylabel("watts")
+        pwr_axes = plt.subplot(gs[0])
+        pwr_axes.set_title("Power consumption")
+        pwr_axes.set_xlabel("time")
+        pwr_axes.set_ylabel("watts")
         
         # Axes for plotting missed samples
-        Channel.hit_axes = plt.subplot(gs[1])
-        Channel.hit_axes.set_title("Drop-outs")  
-        Channel.hit_axes.xaxis.axis_date()  
+        hit_axes = plt.subplot(gs[1])
+        hit_axes.set_title("Drop-outs")  
+        hit_axes.xaxis.axis_date()  
     
-    # Produce data for stats tables, update cache and plot channel data
+    # Produce data for stats tables, update cache and plot_new_data channel data
     for dummy, chan in channels.iteritems():
-        chan.add_to_table()
-        if args.cache:
-            chan.add_cache_to_table(Channel.cache_table)
+        
+        new_data_table = chan.add_new_data_to_table(new_data_table)
+        
+        if args.use_cache:
+            cache_table = chan.add_cache_to_table(cache_table)
             chan.update_and_save_cache()
-            chan.add_cache_to_table(Channel.totals_table)
-        if args.plot:
-            chan.plot()
+            totals_table = chan.add_cache_to_table(totals_table)
+            
+        data_available |= chan.data_is_available()
+        
+        if args.plot and chan.data_is_available():
+            pwr_line, = chan.plot_new_data(pwr_axes)
+            chan.plot_missed_samples(hit_axes, color=pwr_line.get_c())
+            
     
     # Load sound card power meter data (if available)
     HIGH_FREQ_MAINS_DIR = args.base_data_dir + "/high-freq-mains" 
     if os.path.isdir(HIGH_FREQ_MAINS_DIR):
         real_power, apparent_power = load_high_freq_mains(HIGH_FREQ_MAINS_DIR,
-                                                          Channel.table.first_timestamp,
-                                                          Channel.table.last_timestamp)
+                                                          new_data_table.first_datetime,
+                                                          new_data_table.last_datetime)
         
         if real_power is not None:
-            # TODO: run .plot and .add_to_table for
-            #       real_power and apparent_power.
+            real_power.chan_num = last_chan_num + 1
+            apparent_power.chan_num = last_chan_num + 2
             
-            real_power.chan_num = max_chan_num + 1
-            apparent_power.chan_num = max_chan_num + 2
-            
-            real_power.add_to_table()
-            apparent_power.add_to_table()
+            new_data_table = real_power.add_new_data_to_table(new_data_table)
+            new_data_table = apparent_power.add_new_data_to_table(new_data_table)
             if args.plot:
-                real_power.plot()
-                apparent_power.plot()
+                real_power.plot_new_data(pwr_axes)
+                apparent_power.plot_new_data(pwr_axes)
             
             channels[real_power.chan_num] = real_power
             channels[apparent_power.chan_num] = apparent_power
-            max_chan_num += 2    
+            last_chan_num += 2    
     
     # Output stats tables as HTML or to stdout
     if args.html_dir:
-        html_file = open(args.html_dir + "/index.html", "w")
-        html_file.write("<!DOCTYPE html>\n<html>\n<body>")
-        html_file.write(Channel.output_html_tables())
-        if Channel.data_to_plot:
-            html_file.write("<img src=\"fig.png\"/>")
+        html = "<!DOCTYPE html>\n<html>\n<body>"
+        html += "<h3>NEW DATA:</h3>\n"
+        html += new_data_table.html()
+        if args.use_cache and cache_table.data:
+            html += "<h3>OLD DATA:</h3>\n"
+            html += cache_table.html()
+            html += "<h3>TOTALS:</h3>\n"
+            html += totals_table.html()
+        if data_available:
+            html += "<img src=\"fig.png\"/>"
         else:
-            html_file.write("<p>No new data to plot!</p>")
-        html_file.write("</body>\n</html>")
-        html_file.close()
+            html += "<p>No new data to plot_new_data!</p>"
+        html += "</body>\n</html>"
+        
+        with open(args.html_dir + "/index.html", "w") as html_file:
+            html_file.write(html)
+
     else:
-        Channel.output_text_tables()
+        # output text tables
+        print("NEW DATA:\n", new_data_table)
+        if args.use_cache and cache_table.data:
+            print("OLD DATA:\n", cache_table)
+            print("TOTALS:\n", totals_table)        
         
     # Finish formatting plots and output to screen or file
-    if args.plot and Channel.data_to_plot:
+    if args.plot and data_available:
         # Format axes
-        Channel.hit_axes.autoscale_view()      
-        Channel.hit_axes.set_xlim( Channel.pwr_axes.get_xlim() )
-        Channel.hit_axes.set_ylim([-max_chan_num, 0])
+        hit_axes.autoscale_view()      
+        hit_axes.set_xlim( pwr_axes.get_xlim() )
+        hit_axes.set_ylim([-last_chan_num, 0])
         date_formatter = matplotlib.dates.DateFormatter("%d/%m\n%H:%M")
-        Channel.hit_axes.xaxis.set_major_formatter( date_formatter )     
-        Channel.pwr_axes.xaxis.set_major_formatter( date_formatter )     
+        hit_axes.xaxis.set_major_formatter( date_formatter )     
+        pwr_axes.xaxis.set_major_formatter( date_formatter )     
         plt.tight_layout()
         
         # Shrink axes by 20% to make space for legend   
-        scale_width(Channel.hit_axes, 0.8)
-        scale_width(Channel.pwr_axes, 0.8)
+        scale_width(hit_axes, 0.8)
+        scale_width(pwr_axes, 0.8)
         
         # Create and format legend
-        leg = Channel.pwr_axes.legend(bbox_to_anchor=(1, 1), loc="upper left")
+        leg = pwr_axes.legend(bbox_to_anchor=(1, 1), loc="upper left")
         for t in leg.get_texts():
             t.set_fontsize('small')
                 
-        # Output plot to chosen destination
+        # Output plot_new_data to chosen destination
         if args.html_dir:
             plt.savefig(args.html_dir + "/fig.png", bbox_inches=0)
         else:
             plt.show()
 
-    if not Channel.data_to_plot:
-        print("No new data to plot.")
+    if not data_available:
+        print("No new data to plot_new_data.")
 
 
 if __name__ == "__main__":
