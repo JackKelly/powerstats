@@ -464,14 +464,22 @@ def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime,
     
     # Find all .dat files
     # 'f' is short for 'file'
-    dat_files = [f for f in dir_listing if f.rpartition('.')[-1]=='dat']
-    
+    dat_files = [f for f in dir_listing 
+                 if f.startswith('mains-') and f.endswith('.dat')]
+
     # find set of dat files which start before end_timestamp
-    dat_files = [s for s in dat_files # 's' is short for 'string'
-                 if input_tz.localize(datetime.datetime.strptime(s, 'mains-%Y_%m_%d_%H_%M_%S.dat')) 
-                 < end_datetime]
+    dat_files_filtered = []
+    for s in dat_files: # 's' is short for 'string'
+        try:
+            dt = datetime.datetime.strptime(s, 'mains-%Y_%m_%d_%H_%M_%S.dat')
+            dt = input_tz.localize(dt)
+        except ValueError as e:
+            print("Unrecognised file name format:", str(e), file=sys.stderr)
+        else:
+            if dt < end_datetime:
+                dat_files_filtered.append(s)
     
-    if not dat_files:
+    if not dat_files_filtered:
         print("No high frequency dat files found with start times before",
               end_datetime)
         return None, None
@@ -480,8 +488,8 @@ def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime,
     # files covering the time period between start_timestamp and end_timestamp
     # but we only open one.  In the vast majority of cases, this limitation
     # won't be an issue)
-    dat_files.sort()
-    data_filename = high_freq_mains_dir + "/" + dat_files[-1]
+    dat_files_filtered.sort()
+    data_filename = high_freq_mains_dir + "/" + dat_files_filtered[-1]
 
     start_timestamp = time.mktime(start_datetime.timetuple())
 
