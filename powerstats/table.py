@@ -107,7 +107,7 @@ class Table:
         time_details.data_row(["End", self.last_datetime.strftime(fmt)])
         
         td = self.last_datetime - self.first_datetime
-        time_details.data_row(["Duration", str(td)])
+        time_details.data_row(["Duration", str(td).partition('.')[0]])
         return time_details
     
     def _list_to_plain_text_row(self, lst, header=False):

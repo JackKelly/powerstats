@@ -575,7 +575,7 @@ def main():
 
     # Setup matplotlib figure (but don't plot_new_data anything yet)
     if args.plot:
-        fig = plt.figure(figsize=(25,10))
+        fig = plt.figure(figsize=(20,10))
         gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
         pwr_axes = plt.subplot(gs[0])
         pwr_axes.set_title("Power consumption")
