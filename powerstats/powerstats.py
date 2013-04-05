@@ -49,7 +49,7 @@ class Channel(object):
                 after this time (no timezone conversion done)
         """
         self.data_filename = filename
-        print("Loading ", self.data_filename, "... ", end="", sep="")             
+        print("Loading ", self.data_filename, "... ", end="", sep="")
         
         # Load data file
         try:
@@ -73,7 +73,7 @@ class Channel(object):
         elif data_type == "apparent_power":
             power_column = 2
         
-        i = 0    
+        i = 0
         for line in lines:
             line = line.split()
             timestamp = float(line[0])
@@ -85,7 +85,7 @@ class Channel(object):
                 break
             
             watts = float(line[power_column])
-            date_time = input_tz.localize(datetime.datetime.fromtimestamp(timestamp))
+            date_time = datetime.datetime.fromtimestamp(timestamp, input_tz)
                     
             self.data[i] = (date_time, watts)
             i += 1
@@ -349,7 +349,7 @@ def setup_argparser():
                              ' file, if such a file exists.  If no'
                              ' value is provided then the input timezone will'
                              ' be taken from the data-dir/metadata.dat file.'
-                             ' If no such file exists then it defaults to Europe/London.')
+                             ' If no such file exists then it defaults to UTC.')
 
     args = parser.parse_args()
 
@@ -643,10 +643,10 @@ def main():
 
     else:
         # output text tables
-        print("NEW DATA:\n", new_data_table)
+        print("NEW DATA:", new_data_table, sep="\n")
         if args.use_cache and cache_table.data is not None:
-            print("OLD DATA:\n", cache_table)
-            print("TOTALS:\n", totals_table)        
+            print("OLD DATA:", cache_table, sep="\n")
+            print("TOTALS:", totals_table, sep="\n")        
         
     # Finish formatting plots and output to screen or file
     if args.plot and data_available:

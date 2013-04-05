@@ -100,11 +100,15 @@ class Table:
         if self.first_datetime is None:
             return
         
+        fmt = '%Y-%m-%d %H:%M:%S %Z'
+        
         time_details = Table(col_width = [9,30])
-        time_details.data_row(["Start", self.first_datetime])
-        time_details.data_row(["End", self.last_datetime])
-        time_details.data_row(["Duration", 
-                               self.last_datetime - self.first_datetime])
+        time_details.data_row(["Start", self.first_datetime.strftime(fmt)])
+        time_details.data_row(["End", self.last_datetime.strftime(fmt)])
+        
+        # remove sub-second info from time delta
+        td = self.last_datetime - self.first_datetime
+        time_details.data_row(["Duration", str(td).rpartition('.')[0]])
         return time_details
     
     def _list_to_plain_text_row(self, lst, header=False):
