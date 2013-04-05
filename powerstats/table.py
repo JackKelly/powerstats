@@ -106,9 +106,8 @@ class Table:
         time_details.data_row(["Start", self.first_datetime.strftime(fmt)])
         time_details.data_row(["End", self.last_datetime.strftime(fmt)])
         
-        # remove sub-second info from time delta
         td = self.last_datetime - self.first_datetime
-        time_details.data_row(["Duration", str(td).rpartition('.')[0]])
+        time_details.data_row(["Duration", str(td)])
         return time_details
     
     def _list_to_plain_text_row(self, lst, header=False):
