@@ -459,6 +459,9 @@ def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime,
     if start_datetime is None or end_datetime is None:
         return None, None
     
+    start_timestamp = time.mktime(start_datetime.timetuple())
+    end_timestamp = time.mktime(end_datetime.timetuple())
+    
     print("Loading high frequency mains data...")
     dir_listing = os.listdir(high_freq_mains_dir)
     
@@ -468,16 +471,9 @@ def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime,
                  if f.startswith('mains-') and f.endswith('.dat')]
 
     # find set of dat files which start before end_timestamp
-    dat_files_filtered = []
-    for s in dat_files: # 's' is short for 'string'
-        try:
-            dt = datetime.datetime.strptime(s, 'mains-%Y_%m_%d_%H_%M_%S.dat')
-            dt = input_tz.localize(dt)
-        except ValueError as e:
-            print("Unrecognised file name format:", str(e), file=sys.stderr)
-        else:
-            if dt < end_datetime:
-                dat_files_filtered.append(s)
+    dat_files_filtered = [f for f in dat_files if
+                          int(f.lstrip('mains-').fstrip('.dat'))
+                          < end_timestamp]
     
     if not dat_files_filtered:
         print("No high frequency dat files found with start times before",
@@ -490,8 +486,6 @@ def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime,
     # won't be an issue)
     dat_files_filtered.sort()
     data_filename = high_freq_mains_dir + "/" + dat_files_filtered[-1]
-
-    start_timestamp = time.mktime(start_datetime.timetuple())
 
     real_power = Channel()
     real_power.label = "real power"
