@@ -246,7 +246,7 @@ class Channel(object):
         
         # Power consumption
         return axes.plot(self.data['datetime'], self.data['watts'],
-                         label=str(self.chan_num) + ' ' + self.label)
+                              label=str(self.chan_num) + ' ' + self.label)
     
     def plot_missed_samples(self, axes, color):
         if self._dt is None:
@@ -472,7 +472,7 @@ def load_high_freq_mains(high_freq_mains_dir, start_datetime, end_datetime,
 
     # find set of dat files which start before end_timestamp
     dat_files_filtered = [f for f in dat_files if
-                          int(f.lstrip('mains-').fstrip('.dat'))
+                          int(f.lstrip('mains-').rstrip('.dat'))
                           < end_timestamp]
     
     if not dat_files_filtered:
@@ -575,11 +575,12 @@ def main():
         pwr_axes.set_title("Power consumption")
         pwr_axes.set_xlabel("time")
         pwr_axes.set_ylabel("watts")
+        pwr_axes.xaxis.axis_date(input_tz)          
         
         # Axes for plotting missed samples
         hit_axes = plt.subplot(gs[1])
         hit_axes.set_title("Drop-outs")  
-        hit_axes.xaxis.axis_date()  
+        hit_axes.xaxis.axis_date(input_tz)  
     
     # Produce data for stats tables, update cache and plot_new_data channel data
     for chan in channels:
@@ -648,7 +649,8 @@ def main():
         hit_axes.autoscale_view()      
         hit_axes.set_xlim( pwr_axes.get_xlim() )
         hit_axes.set_ylim([-channels[-1].chan_num, 0])
-        date_formatter = matplotlib.dates.DateFormatter("%d/%m\n%H:%M")
+        date_formatter = matplotlib.dates.DateFormatter("%d/%m\n%H:%M", 
+                                                        tz=input_tz)
         hit_axes.xaxis.set_major_formatter( date_formatter )     
         pwr_axes.xaxis.set_major_formatter( date_formatter )     
         plt.tight_layout()
