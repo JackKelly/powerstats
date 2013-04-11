@@ -300,7 +300,7 @@ def setup_argparser():
     parser.add_argument('--data-dir', dest='base_data_dir', default=None,
                         help='directory from which to retrieve data.')
     
-    parser.add_argument('--high-freq-data-dir', dest='high_freq_data_dir',
+    parser.add_argument('--high-freq-data-dir',
                         default=None, help='Directory for the .dat files'
                         ' recording real and apparent power, for example'
                         ' recorded using snd_card_power_meter.')
@@ -326,7 +326,7 @@ def setup_argparser():
     parser.add_argument('--html', action='store_true',
                         help='Output HTML to data-dir/html/')
     
-    parser.add_argument('--html-dir', dest='html_dir',
+    parser.add_argument('--html-dir',
                         help='Output stats and graphs as HTML to this directory.')    
     
     parser.add_argument('--start',
@@ -341,8 +341,7 @@ def setup_argparser():
                         help='Cache data for this timeperiod, starting from '
                         'end of last cached period.')
 
-    parser.add_argument('--input-timezone', dest='input_timezone', 
-                        default=None,
+    parser.add_argument('--input-timezone', default=None,
                         help='Timezone of input data.'
                              ' e.g. \'UTC\' or \'Europe/London\'. This option'
                              ' overrides the timezone specified in the metadata.dat'
