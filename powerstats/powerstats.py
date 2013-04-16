@@ -273,8 +273,8 @@ def load_labels(args):
     
     labels = {}
     for line in lines:
-        line = line.split()
-        labels[int(line[0])] = line[1] # TODO add error handling if line[0] not an int
+        line = line.partition(' ')
+        labels[int(line[0])] = line[2].strip() # TODO add error handling if line[0] not an int
         
     print("Loaded {} lines from labels.dat".format(len(labels)))
         
